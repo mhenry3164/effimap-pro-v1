@@ -24,30 +24,31 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import PageLayout from '../../layout/PageLayout';
 import { TerritoryList } from '../../territory/TerritoryList';
 import { DashboardMap } from '../../dashboard/DashboardMap';
+import Map from '../../territory/Map';
 import { territoryTypeService, TerritoryTypeDefinition } from '../../../services/territoryTypeService';
 import { useTenant } from '../../../contexts/TenantContext';
 import { useToast } from '../../ui/use-toast';
+import { useMap } from '../../../contexts/MapContext';
 
 export default function TerritoryManagementNew() {
   const { tenant } = useTenant();
   const { toast } = useToast();
+  const { setIsDrawingMode } = useMap();
   const [territoryTypes, setTerritoryTypes] = useState<TerritoryTypeDefinition[]>([]);
   const [isTypesDialogOpen, setIsTypesDialogOpen] = useState(false);
   const [newType, setNewType] = useState({ name: '', code: '', color: '#2196F3', description: '' });
   const [editingType, setEditingType] = useState<TerritoryTypeDefinition | null>(null);
   const [addingChildTo, setAddingChildTo] = useState<string | null>(null);
   const [isCategory, setIsCategory] = useState(false);
+  const [showMap, setShowMap] = useState(false);
 
   useEffect(() => {
     const initializeTypes = async () => {
       if (!tenant?.id) return;
       
       try {
-        // First initialize default types if needed
         await territoryTypeService.initializeDefaultTypes(tenant.id);
-        // Then load all types (including any newly created defaults)
         const types = await territoryTypeService.getAll(tenant.id);
-        // Store unique types, keeping the most recently updated version if duplicates exist
         const uniqueTypes = Object.values(
           types.reduce((acc, type) => {
             const existing = acc[type.code];
@@ -76,7 +77,6 @@ export default function TerritoryManagementNew() {
     
     try {
       const types = await territoryTypeService.getAll(tenant.id);
-      // Store unique types, keeping the most recently updated version if duplicates exist
       const uniqueTypes = Object.values(
         types.reduce((acc, type) => {
           const existing = acc[type.code];
@@ -97,9 +97,9 @@ export default function TerritoryManagementNew() {
     }
   };
 
-  // Handlers
   const handleCreateTerritory = () => {
-    console.log('Create territory clicked');
+    setShowMap(true);
+    setIsDrawingMode(true);
   };
 
   const handleImport = () => {
@@ -428,6 +428,35 @@ export default function TerritoryManagementNew() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Map Overlay */}
+      {showMap && (
+        <div 
+          style={{ 
+            position: 'fixed', 
+            top: 0, 
+            left: 0, 
+            right: 0, 
+            bottom: 0, 
+            zIndex: 1000,
+            backgroundColor: 'white'
+          }}
+        >
+          <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 1001 }}>
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={() => {
+                setShowMap(false);
+                setIsDrawingMode(false);
+              }}
+            >
+              Close
+            </Button>
+          </div>
+          <Map />
+        </div>
+      )}
     </PageLayout>
   );
 }

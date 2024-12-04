@@ -17,6 +17,7 @@ const TerritoryEditor: React.FC<TerritoryEditorProps> = ({
   map
 }) => {
   const [isDrawing, setIsDrawing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [points, setPoints] = useState<TerritoryPoint[]>(territory.boundary?.coordinates || []);
   const [drawingPath, setDrawingPath] = useState<google.maps.Polyline | null>(null);
   const [polygon, setPolygon] = useState<google.maps.Polygon | null>(null);
@@ -37,7 +38,7 @@ const TerritoryEditor: React.FC<TerritoryEditorProps> = ({
     setPolygon(newPolygon);
 
     // Add listeners
-    newPolygon.addListener('mouseup', () => {
+    const mouseUpListener = newPolygon.addListener('mouseup', () => {
       const path = newPolygon.getPath();
       const newPoints: TerritoryPoint[] = [];
       for (let i = 0; i < path.getLength(); i++) {
@@ -53,7 +54,12 @@ const TerritoryEditor: React.FC<TerritoryEditorProps> = ({
 
     // Cleanup only when unmounting
     return () => {
-      newPolygon.setMap(null);
+      google.maps.event.removeListener(mouseUpListener);
+      if (newPolygon) {
+        // Make sure to set editable to false before removing
+        newPolygon.setEditable(false);
+        newPolygon.setMap(null);
+      }
     };
   }, [map]); // Only depend on map
 
@@ -68,8 +74,29 @@ const TerritoryEditor: React.FC<TerritoryEditorProps> = ({
     });
   }, [points]);
 
+  const cleanupMapObjects = () => {
+    // Clean up drawing path if exists
+    if (drawingPath) {
+      drawingPath.setMap(null);
+      setDrawingPath(null);
+    }
+
+    // Clean up polygon if exists
+    if (polygon) {
+      // First disable editing to remove edit points
+      polygon.setEditable(false);
+      // Then remove from map
+      polygon.setMap(null);
+      setPolygon(null);
+    }
+  };
+
   const handleSave = async () => {
+    if (isSaving) return;
+    
+    setIsSaving(true);
     try {
+      // Prepare update data
       const update: TerritoryUpdate = {
         id: territory.id,
         boundary: {
@@ -84,17 +111,28 @@ const TerritoryEditor: React.FC<TerritoryEditorProps> = ({
         }
       };
 
-      // First, disable editing and remove the polygon
+      // First disable editing to remove edit points
       if (polygon) {
         polygon.setEditable(false);
-        polygon.setMap(null);
-        setPolygon(null);
       }
 
+      // Let parent handle the save
       await onSave(update);
+
+      // Clean up all map objects after successful save
+      cleanupMapObjects();
+
+      // Close the editor
       onClose();
     } catch (error) {
       console.error('Error saving territory:', error);
+      // Re-enable editing if save failed
+      if (polygon) {
+        polygon.setEditable(true);
+      }
+      throw error;
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -144,28 +182,43 @@ const TerritoryEditor: React.FC<TerritoryEditorProps> = ({
     }
   };
 
+  const handleCancel = () => {
+    cleanupMapObjects();
+    onClose();
+  };
+
   return (
     <div className="absolute bottom-4 right-4 space-y-2">
       {!isDrawing ? (
         <button
           onClick={handleStartDrawing}
-          className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90"
+          disabled={isSaving}
+          className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 disabled:opacity-50"
         >
           Start Drawing
         </button>
       ) : (
         <button
           onClick={handleFinishDrawing}
-          className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90"
+          disabled={isSaving}
+          className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 disabled:opacity-50"
         >
           Finish Drawing
         </button>
       )}
       <button
         onClick={handleSave}
-        className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90"
+        disabled={isSaving}
+        className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 disabled:opacity-50"
       >
-        Save Changes
+        {isSaving ? 'Saving...' : 'Save Changes'}
+      </button>
+      <button
+        onClick={handleCancel}
+        disabled={isSaving}
+        className="bg-secondary text-secondary-foreground px-4 py-2 rounded-md hover:bg-secondary/90 disabled:opacity-50"
+      >
+        Cancel
       </button>
     </div>
   );

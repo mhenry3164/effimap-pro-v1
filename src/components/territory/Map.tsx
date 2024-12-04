@@ -9,6 +9,7 @@ import LoadingScreen from '../shared/LoadingScreen';
 import TerritoryLayer from './TerritoryLayer';
 import TerritoryEditor from './TerritoryEditor';
 import { territoryService } from '../../services/territoryService';
+import { territoryTypeService } from '../../services/territoryTypeService';
 import { activityService } from '../../services/activityService';
 import { Pencil, Trash, Palette, X } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -16,7 +17,7 @@ import { useTerritoryDetails } from '../../hooks/useTerritoryDetails';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { ColorPicker } from '../ui/color-picker';
 import { TerritoryForm } from './TerritoryForm';
-import { HeatMapLayer } from '../map/HeatMapLayer';  // Add this import
+import { HeatMapLayer } from '../map/HeatMapLayer';
 import { 
   Territory, 
   TerritoryPoint, 
@@ -62,8 +63,9 @@ export const Map: React.FC = () => {
     zipLayerVisible,
     isDrawingMode,
     setIsDrawingMode,
-    heatMapLayerVisible,  // Add this
-    heatMapData           // Add this
+    heatMapLayerVisible,
+    heatMapData,
+    setTerritoryTypes
   } = useMap();
 
   // Initialize state
@@ -101,6 +103,19 @@ export const Map: React.FC = () => {
 
   // Initialize dependent hooks
   const { details: territoryDetails, isLoading: detailsLoading } = useTerritoryDetails(selectedTerritoryState);
+
+  // Load territory types
+  const loadTerritoryTypes = useCallback(async () => {
+    if (user?.tenantId) {
+      try {
+        const types = await territoryTypeService.getAll(user.tenantId);
+        setTerritoryTypes(types);
+      } catch (error) {
+        console.error('Error loading territory types:', error);
+        toast.error('Failed to load territory types');
+      }
+    }
+  }, [user?.tenantId, setTerritoryTypes]);
 
   // Effect to sync territories with store
   useEffect(() => {
@@ -482,10 +497,11 @@ export const Map: React.FC = () => {
     };
   }, [map, isDrawingMode, handlePolygonComplete, territoryStyle, setIsDrawingMode]);
 
-  // Refresh territories when map is loaded or user changes
+  // Refresh territories and territory types when map is loaded or user changes
   useEffect(() => {
     refreshTerritories();
-  }, [refreshTerritories, user?.tenantId]);
+    loadTerritoryTypes();
+  }, [refreshTerritories, loadTerritoryTypes, user?.tenantId]);
 
   const onLoad = useCallback((mapInstance: window.google.maps.Map) => {
     setMap(mapInstance);

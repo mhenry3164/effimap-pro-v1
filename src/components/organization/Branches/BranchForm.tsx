@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   TextField,
@@ -15,10 +15,11 @@ import {
 import { useRBAC } from '../../../hooks/useRBAC';
 import { useTenant } from '../../../providers/TenantProvider';
 import { useGoogleMapsApi } from '../../../hooks/useGoogleMapsApi';
+import { Branch } from '../../../types/branch';
 
 interface BranchFormProps {
   onSubmit: (data: any) => Promise<void>;
-  initialData?: any;
+  initialData?: Branch | null;
   onCancel: () => void;
 }
 
@@ -27,25 +28,63 @@ const BranchForm: React.FC<BranchFormProps> = ({ onSubmit, initialData, onCancel
   const { hasPermission } = useRBAC();
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
-    name: initialData?.name || '',
-    code: initialData?.code || '',
-    managerEmail: initialData?.managerEmail || '',
-    status: initialData?.status || 'active',
-    address: initialData?.address || '',
-    territory: initialData?.territory || '',
-    coordinates: initialData?.coordinates || null,
+    name: '',
+    code: '',
+    manager: '',
+    status: 'active',
+    address: {
+      street: '',
+      city: '',
+      state: '',
+      zipCode: ''
+    },
+    contact: {
+      email: '',
+      phone: ''
+    },
+    location: {
+      latitude: 0,
+      longitude: 0
+    }
   });
+
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        name: initialData.name || '',
+        code: initialData.code || '',
+        manager: initialData.manager || '',
+        status: initialData.status || 'active',
+        address: initialData.address || {
+          street: '',
+          city: '',
+          state: '',
+          zipCode: ''
+        },
+        contact: initialData.contact || {
+          email: '',
+          phone: ''
+        },
+        location: initialData.location || {
+          latitude: 0,
+          longitude: 0
+        }
+      });
+    }
+  }, [initialData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     try {
-      // Get coordinates from address using Google Geocoding
-      if (formData.address) {
+      // Get coordinates from address using Google Geocoding if address has changed
+      if (formData.address.street && formData.address.city) {
         const geocoder = new google.maps.Geocoder();
+        const fullAddress = `${formData.address.street}, ${formData.address.city}, ${formData.address.state} ${formData.address.zipCode}`;
+        
         const result = await new Promise((resolve, reject) => {
-          geocoder.geocode({ address: formData.address }, (results, status) => {
+          geocoder.geocode({ address: fullAddress }, (results, status) => {
             if (status === 'OK' && results && results[0]) {
               resolve(results[0]);
             } else {
@@ -56,28 +95,37 @@ const BranchForm: React.FC<BranchFormProps> = ({ onSubmit, initialData, onCancel
 
         // Update formData with coordinates
         const location = (result as google.maps.GeocoderResult).geometry.location;
-        const coordinates = [location.lat(), location.lng()];
-        await onSubmit({ ...formData, coordinates });
-      } else {
-        await onSubmit(formData);
+        formData.location = {
+          latitude: location.lat(),
+          longitude: location.lng()
+        };
       }
+
+      await onSubmit(formData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | { name?: string; value: unknown }>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name as string]: value
-    }));
+  const handleChange = (field: string, value: any) => {
+    setFormData(prev => {
+      const newData = { ...prev };
+      if (field.includes('.')) {
+        const [section, key] = field.split('.');
+        (newData as any)[section] = {
+          ...(newData as any)[section],
+          [key]: value
+        };
+      } else {
+        (newData as any)[field] = value;
+      }
+      return newData;
+    });
   };
 
   const canEditBranch = hasPermission({
     resource: 'branches',
-    action: initialData ? 'update' : 'create',
-    conditions: initialData ? { branchId: initialData.id } : undefined,
+    action: initialData ? 'update' : 'create'
   });
 
   if (!canEditBranch) {
@@ -106,9 +154,8 @@ const BranchForm: React.FC<BranchFormProps> = ({ onSubmit, initialData, onCancel
             <TextField
               fullWidth
               label="Branch Name"
-              name="name"
               value={formData.name}
-              onChange={handleChange}
+              onChange={(e) => handleChange('name', e.target.value)}
               required
             />
           </Grid>
@@ -117,9 +164,8 @@ const BranchForm: React.FC<BranchFormProps> = ({ onSubmit, initialData, onCancel
             <TextField
               fullWidth
               label="Branch Code"
-              name="code"
               value={formData.code}
-              onChange={handleChange}
+              onChange={(e) => handleChange('code', e.target.value)}
               required
             />
           </Grid>
@@ -128,51 +174,89 @@ const BranchForm: React.FC<BranchFormProps> = ({ onSubmit, initialData, onCancel
             <TextField
               fullWidth
               label="Manager Email"
-              name="managerEmail"
-              type="email"
-              value={formData.managerEmail}
-              onChange={handleChange}
+              value={formData.manager}
+              onChange={(e) => handleChange('manager', e.target.value)}
               required
             />
           </Grid>
 
           <Grid item xs={12}>
-            <TextField
-              fullWidth
-              label="Address"
-              name="address"
-              value={formData.address}
-              onChange={handleChange}
-              required
-              helperText="Enter the full address to automatically get coordinates"
-            />
+            <Typography variant="subtitle1" gutterBottom>
+              Address
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Street"
+                  value={formData.address.street}
+                  onChange={(e) => handleChange('address.street', e.target.value)}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="City"
+                  value={formData.address.city}
+                  onChange={(e) => handleChange('address.city', e.target.value)}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="State"
+                  value={formData.address.state}
+                  onChange={(e) => handleChange('address.state', e.target.value)}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  label="ZIP Code"
+                  value={formData.address.zipCode}
+                  onChange={(e) => handleChange('address.zipCode', e.target.value)}
+                  required
+                />
+              </Grid>
+            </Grid>
           </Grid>
 
-          <Grid item xs={12} sm={6}>
-            <FormControl fullWidth>
-              <InputLabel>Territory</InputLabel>
-              <Select
-                name="territory"
-                value={formData.territory}
-                onChange={handleChange}
-                label="Territory"
-              >
-                {/* TODO: Fetch territories from context */}
-                <MenuItem value="north">North</MenuItem>
-                <MenuItem value="south">South</MenuItem>
-                <MenuItem value="east">East</MenuItem>
-                <MenuItem value="west">West</MenuItem>
-              </Select>
-            </FormControl>
+          <Grid item xs={12}>
+            <Typography variant="subtitle1" gutterBottom>
+              Contact Information
+            </Typography>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Email"
+                  type="email"
+                  value={formData.contact.email}
+                  onChange={(e) => handleChange('contact.email', e.target.value)}
+                  required
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Phone"
+                  value={formData.contact.phone}
+                  onChange={(e) => handleChange('contact.phone', e.target.value)}
+                  required
+                />
+              </Grid>
+            </Grid>
           </Grid>
 
-          <Grid item xs={12} sm={6}>
+          <Grid item xs={12}>
             <FormControl fullWidth>
               <InputLabel>Status</InputLabel>
               <Select
-                name="status"
                 value={formData.status}
-                onChange={handleChange}
+                onChange={(e) => handleChange('status', e.target.value)}
                 label="Status"
               >
                 <MenuItem value="active">Active</MenuItem>
