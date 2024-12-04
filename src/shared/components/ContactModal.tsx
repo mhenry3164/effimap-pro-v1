@@ -1,12 +1,13 @@
 import React from 'react';
 import ContactForm from './ContactForm';
 
-interface ContactModalProps {
-  isOpen: boolean;
+export interface ContactModalProps {
+  isOpen?: boolean;
   onClose: () => void;
+  source?: string;
 }
 
-const ContactModal: React.FC<ContactModalProps> = ({ isOpen, onClose }) => {
+const ContactModal: React.FC<ContactModalProps> = ({ isOpen = true, onClose, source }) => {
   if (!isOpen) return null;
 
   return (
@@ -26,10 +27,13 @@ const ContactModal: React.FC<ContactModalProps> = ({ isOpen, onClose }) => {
                 <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">
                   Contact Us
                 </h3>
-                <ContactForm onSubmit={() => {
-                  // Handle form submission
-                  onClose();
-                }} />
+                <ContactForm 
+                  onSubmit={() => {
+                    // Handle form submission
+                    onClose();
+                  }}
+                  source={source}
+                />
               </div>
             </div>
           </div>

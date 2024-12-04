@@ -1,7 +1,11 @@
 import React, { useEffect, useRef, memo } from 'react';
 import { motion, useAnimation } from 'framer-motion';
 
-const BackgroundAnimation: React.FC = () => {
+interface BackgroundAnimationProps {
+  className?: string;
+}
+
+const BackgroundAnimation: React.FC<BackgroundAnimationProps> = ({ className }) => {
   const controls = useAnimation();
   const svgRef = useRef<SVGSVGElement>(null);
   const isVisible = useRef(true);
@@ -53,7 +57,7 @@ const BackgroundAnimation: React.FC = () => {
   }, [controls]);
 
   return (
-    <div className="absolute inset-0 overflow-hidden opacity-20">
+    <div className={`absolute inset-0 overflow-hidden opacity-20 ${className || ''}`}>
       <svg
         ref={svgRef}
         className="w-full h-full"

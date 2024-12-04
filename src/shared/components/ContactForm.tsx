@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
 
-interface ContactFormProps {
+export interface ContactFormProps {
   onSubmit?: (data: any) => void;
+  source?: string;
 }
 
-const ContactForm: React.FC<ContactFormProps> = ({ onSubmit }) => {
+const ContactForm: React.FC<ContactFormProps> = ({ onSubmit, source }) => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     company: '',
     message: '',
+    source: source || 'direct',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {

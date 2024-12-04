@@ -1,7 +1,8 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useInView } from 'react-intersection-observer';
-import { MapPin, Target, Users, Lightbulb } from 'lucide-react';
+import { Gauge, Users, Lightbulb, ArrowRight, Workflow, Shield } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export default function AboutPage() {
   const [ref, inView] = useInView({
@@ -14,134 +15,166 @@ export default function AboutPage() {
     visible: { opacity: 1, y: 0 },
   };
 
-  const timeline = [
+  const milestones = [
     {
-      year: '2020',
-      title: 'Company Founded',
-      description: 'EffiWise was established with a vision to revolutionize territory management.',
-    },
-    {
-      year: '2021',
-      title: 'Launch of EffiMapPro',
-      description: 'Our flagship product was launched, bringing innovative mapping solutions to businesses.',
-    },
-    {
-      year: '2022',
-      title: 'Major Platform Updates',
-      description: 'Introduced advanced analytics and team management features.',
+      year: '2023',
+      title: 'EffiMap Launch',
+      description: 'Introduced our territory mapping solution to empower field operations with intelligent tools.',
+      color: 'from-blue-400 to-blue-600'
     },
     {
       year: '2023',
-      title: 'Global Expansion',
-      description: 'Expanded our services to international markets and enhanced our feature set.',
+      title: 'AI Integration',
+      description: 'Enhanced our platform with AI-driven insights for smarter territory management.',
+      color: 'from-indigo-400 to-indigo-600'
     },
+    {
+      year: '2024',
+      title: 'Market Expansion',
+      description: 'Extended our reach to serve more industries with tailored mapping solutions.',
+      color: 'from-cyan-400 to-cyan-600'
+    }
   ];
 
   const values = [
     {
-      icon: <MapPin className="h-6 w-6 text-[#003f88]" />,
-      title: 'Accessibility',
-      description: 'Providing tools that are effective for businesses of all sizes.',
+      icon: <Gauge className="h-8 w-8 text-blue-600" />,
+      title: 'Efficiency',
+      description: 'We simplify complex territory management tasks, allowing you to accomplish more in less time.',
+      color: 'from-blue-50 to-indigo-50'
     },
     {
-      icon: <Target className="h-6 w-6 text-[#003f88]" />,
-      title: 'Business First',
-      description: 'Focusing on enabling business decisions, not technical complexity.',
+      icon: <Users className="h-8 w-8 text-purple-600" />,
+      title: 'Customer-Centricity',
+      description: 'Every feature is designed with a deep understanding of field operations and your daily challenges.',
+      color: 'from-purple-50 to-pink-50'
     },
     {
-      icon: <Users className="h-6 w-6 text-[#003f88]" />,
-      title: 'Collaboration',
-      description: 'Fostering partnerships with consultants, strategists, and users for mutual growth.',
-    },
-    {
-      icon: <Lightbulb className="h-6 w-6 text-[#003f88]" />,
+      icon: <Lightbulb className="h-8 w-8 text-amber-600" />,
       title: 'Innovation',
-      description: 'Leveraging cutting-edge technology to simplify complex geographic decision-making.',
+      description: 'We leverage AI and modern technology to provide practical, impactful mapping solutions.',
+      color: 'from-amber-50 to-yellow-50'
     },
+    {
+      icon: <Workflow className="h-8 w-8 text-green-600" />,
+      title: 'Adaptability',
+      description: 'Scalable solutions that grow with your business, from single locations to multi-branch operations.',
+      color: 'from-green-50 to-emerald-50'
+    },
+    {
+      icon: <Shield className="h-8 w-8 text-red-600" />,
+      title: 'Excellence',
+      description: 'Committed to delivering reliable, high-quality tools that support your operational success.',
+      color: 'from-red-50 to-rose-50'
+    }
   ];
 
   return (
-    <div className="bg-white">
+    <div className="min-h-screen bg-gradient-to-b from-white via-blue-50 to-white">
       {/* Hero Section */}
-      <div className="relative bg-white">
-        <div className="max-w-7xl mx-auto py-16 px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
+      <div className="relative overflow-hidden">
+        <div className="max-w-7xl mx-auto py-20 px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial="hidden"
+            animate="visible"
+            variants={fadeIn}
+            className="text-center"
+          >
             <h1 className="text-4xl tracking-tight font-extrabold text-gray-900 sm:text-5xl md:text-6xl">
-              <span className="block">Our Mission is</span>
-              <span className="block text-[#003f88]">Your Success</span>
+              <span className="block">Empowering Professionals with</span>
+              <span className="block bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600">
+                Intelligent Mapping Solutions
+              </span>
             </h1>
-            <p className="mt-3 max-w-md mx-auto text-base text-gray-500 sm:text-lg md:mt-5 md:text-xl md:max-w-3xl">
-              EffiMap empowers businesses of all sizes to make data-driven decisions about territory management and geographic strategy.
+            <p className="mt-6 max-w-lg mx-auto text-xl text-gray-600 sm:max-w-3xl">
+              Part of the EffiWise family, EffiMap is committed to providing AI-driven tools that streamline workflows, enhance productivity, and deliver actionable insights for territory management.
             </p>
-          </div>
+          </motion.div>
         </div>
       </div>
 
       {/* Values Section */}
-      <div ref={ref} className="py-16">
+      <div ref={ref} className="py-24">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <h2 className="text-3xl font-extrabold text-gray-900">Our Values</h2>
-          </div>
-          <div className="mt-10">
-            <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
-              {values.map((value, index) => (
-                <motion.div
-                  key={index}
-                  initial="hidden"
-                  animate={inView ? "visible" : "hidden"}
-                  variants={fadeIn}
-                  transition={{ delay: index * 0.1 }}
-                  className="text-center"
-                >
-                  <div className="flex items-center justify-center h-12 w-12 rounded-md bg-indigo-500 text-white mx-auto">
+          <motion.div
+            initial="hidden"
+            animate={inView ? "visible" : "hidden"}
+            variants={fadeIn}
+            className="text-center mb-16"
+          >
+            <h2 className="text-3xl font-extrabold text-gray-900">Our Core Values</h2>
+            <p className="mt-4 text-xl text-gray-600">
+              The principles that drive our commitment to your success
+            </p>
+          </motion.div>
+          <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            {values.map((value, index) => (
+              <motion.div
+                key={value.title}
+                initial="hidden"
+                animate={inView ? "visible" : "hidden"}
+                variants={fadeIn}
+                transition={{ delay: index * 0.1 }}
+                className="relative group"
+              >
+                <div className={`h-full rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br ${value.color} p-8`}>
+                  <div className="flex items-center justify-center h-16 w-16 rounded-xl bg-white shadow-md group-hover:scale-110 transition-transform duration-300 mx-auto">
                     {value.icon}
                   </div>
-                  <h3 className="mt-4 text-lg font-medium text-gray-900">
+                  <h3 className="mt-6 text-xl font-bold text-gray-900 text-center">
                     {value.title}
                   </h3>
-                  <p className="mt-2 text-base text-gray-500">
+                  <p className="mt-4 text-gray-600 text-center">
                     {value.description}
                   </p>
-                </motion.div>
-              ))}
-            </div>
+                </div>
+              </motion.div>
+            ))}
           </div>
         </div>
       </div>
 
-      {/* Timeline Section */}
-      <div className="py-16 bg-gray-50">
+      {/* Value Proposition Section */}
+      <div className="py-24 bg-gradient-to-b from-gray-50 to-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <h2 className="text-3xl font-extrabold text-gray-900">Our Journey</h2>
-          </div>
-          <div className="mt-10">
+          <motion.div
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            variants={fadeIn}
+            className="text-center mb-16"
+          >
+            <h2 className="text-3xl font-extrabold text-gray-900">Our Commitment</h2>
+            <p className="mt-6 text-xl text-gray-600 max-w-3xl mx-auto">
+              EffiMap empowers field operations with intelligent, intuitive tools that enhance efficiency, accuracy, and territory management. We provide industry-tailored solutions that equip professionals with the insights needed to make fast, informed decisions and drive operational success.
+            </p>
+          </motion.div>
+
+          <div className="mt-16">
             <div className="relative">
-              {/* Timeline line */}
-              <div className="absolute left-1/2 transform -translate-x-px h-full w-0.5 bg-gray-200" />
+              <div className="absolute left-1/2 transform -translate-x-px h-full w-0.5 bg-gradient-to-b from-blue-600 to-indigo-600 opacity-20" />
               
-              {/* Timeline entries */}
-              <div className="space-y-12">
-                {timeline.map((item, index) => (
+              <div className="space-y-16">
+                {milestones.map((item, index) => (
                   <motion.div
                     key={item.year}
                     initial="hidden"
-                    animate={inView ? "visible" : "hidden"}
+                    whileInView="visible"
+                    viewport={{ once: true }}
                     variants={fadeIn}
-                    transition={{ delay: index * 0.1 }}
+                    transition={{ delay: index * 0.2 }}
                     className="relative"
                   >
                     <div className="flex items-center justify-center">
-                      <div className="flex items-center justify-center w-12 h-12 bg-indigo-600 rounded-full">
+                      <div className={`flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-r ${item.color} shadow-lg`}>
                         <span className="text-white font-bold">{item.year}</span>
                       </div>
                     </div>
-                    <div className="mt-3 text-center">
-                      <h3 className="text-lg font-medium text-gray-900">
+                    <div className="mt-6 text-center">
+                      <h3 className="text-xl font-bold text-gray-900">
                         {item.title}
                       </h3>
-                      <p className="mt-2 text-base text-gray-500">
+                      <p className="mt-2 text-gray-600 max-w-md mx-auto">
                         {item.description}
                       </p>
                     </div>
@@ -150,6 +183,35 @@ export default function AboutPage() {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* CTA Section */}
+      <div className="bg-gradient-to-br from-blue-600 to-indigo-700">
+        <div className="max-w-7xl mx-auto py-16 px-4 sm:px-6 lg:px-8">
+          <motion.div
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true }}
+            variants={fadeIn}
+            className="text-center"
+          >
+            <h2 className="text-3xl font-extrabold text-white mb-8">
+              Ready to transform your territory management?
+            </h2>
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Link
+                to="/contact"
+                className="inline-flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-lg text-blue-600 bg-white hover:bg-blue-50 transition-colors duration-200"
+              >
+                Start Your Journey
+                <ArrowRight className="ml-2 -mr-1 h-5 w-5" />
+              </Link>
+            </motion.div>
+          </motion.div>
         </div>
       </div>
     </div>
