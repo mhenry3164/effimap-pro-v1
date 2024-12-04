@@ -65,13 +65,13 @@ const HomePage: React.FC = () => {
         <div className="absolute inset-0">
           <BackgroundAnimation className="w-full h-full opacity-30" />
         </div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="relative w-full mx-auto px-4 sm:px-6 lg:px-8 2xl:px-16">
           <div className="py-20 sm:py-24 lg:py-32">
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8 }}
-              className="text-center max-w-3xl mx-auto"
+              className="text-center max-w-[90rem] mx-auto"
             >
               <h1 className="text-4xl tracking-tight font-extrabold text-gray-900 sm:text-5xl md:text-6xl">
                 <span className="block">Intelligent Territory</span>
@@ -79,7 +79,7 @@ const HomePage: React.FC = () => {
                   Management Made Simple
                 </span>
               </h1>
-              <p className="mt-6 text-lg text-gray-600 sm:text-xl max-w-2xl mx-auto">
+              <p className="mt-6 text-lg text-gray-600 sm:text-xl max-w-3xl mx-auto">
                 Empower your field operations with AI-driven mapping solutions that streamline territory management, enhance efficiency, and drive growth for your business.
               </p>
               <div className="mt-10 flex flex-col sm:flex-row justify-center gap-4">
@@ -115,12 +115,12 @@ const HomePage: React.FC = () => {
 
       {/* Stats Section */}
       <section ref={statsRef} className="relative py-16 sm:py-24">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 2xl:px-16">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={statsInView ? { opacity: 1, y: 0 } : {}}
             transition={{ duration: 0.8 }}
-            className="max-w-4xl mx-auto text-center mb-12"
+            className="max-w-[90rem] mx-auto text-center mb-12"
           >
             <h2 className="text-3xl font-extrabold text-gray-900 sm:text-4xl">
               Proven Results for Growing Businesses
@@ -129,7 +129,7 @@ const HomePage: React.FC = () => {
               Join businesses that are transforming their territory management
             </p>
           </motion.div>
-          <dl className="grid grid-cols-1 gap-6 sm:grid-cols-3">
+          <dl className="grid grid-cols-1 gap-6 sm:grid-cols-3 max-w-[90rem] mx-auto">
             {stats.map((stat, index) => (
               <motion.div
                 key={index}
@@ -158,7 +158,7 @@ const HomePage: React.FC = () => {
 
       {/* Features Section */}
       <section ref={ref} className="py-16 sm:py-24 bg-gradient-to-b from-blue-50 to-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 2xl:px-16">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={inView ? { opacity: 1, y: 0 } : {}}
@@ -168,13 +168,13 @@ const HomePage: React.FC = () => {
             <h2 className="text-3xl font-extrabold text-gray-900 sm:text-4xl">
               Tailored for Your Success
             </h2>
-            <p className="mt-4 max-w-2xl text-xl text-gray-600 mx-auto">
+            <p className="mt-4 max-w-3xl text-xl text-gray-600 mx-auto">
               Practical solutions designed for real-world territory management challenges
             </p>
           </motion.div>
 
           <div className="mt-10">
-            <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3 max-w-[90rem] mx-auto">
               {features.map((feature, index) => (
                 <motion.div
                   key={index}

@@ -73,12 +73,12 @@ export default function AboutPage() {
     <div className="min-h-screen bg-gradient-to-b from-white via-blue-50 to-white">
       {/* Hero Section */}
       <div className="relative overflow-hidden">
-        <div className="max-w-7xl mx-auto py-20 px-4 sm:px-6 lg:px-8">
+        <div className="w-full mx-auto py-20 px-4 sm:px-6 lg:px-8 2xl:px-16">
           <motion.div
             initial="hidden"
             animate="visible"
             variants={fadeIn}
-            className="text-center"
+            className="text-center max-w-[90rem] mx-auto"
           >
             <h1 className="text-4xl tracking-tight font-extrabold text-gray-900 sm:text-5xl md:text-6xl">
               <span className="block">Empowering Professionals with</span>
@@ -86,7 +86,7 @@ export default function AboutPage() {
                 Intelligent Mapping Solutions
               </span>
             </h1>
-            <p className="mt-6 max-w-lg mx-auto text-xl text-gray-600 sm:max-w-3xl">
+            <p className="mt-6 max-w-3xl mx-auto text-xl text-gray-600">
               Part of the EffiWise family, EffiMap is committed to providing AI-driven tools that streamline workflows, enhance productivity, and deliver actionable insights for territory management.
             </p>
           </motion.div>
@@ -95,19 +95,19 @@ export default function AboutPage() {
 
       {/* Values Section */}
       <div ref={ref} className="py-24">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 2xl:px-16">
           <motion.div
             initial="hidden"
             animate={inView ? "visible" : "hidden"}
             variants={fadeIn}
-            className="text-center mb-16"
+            className="text-center mb-16 max-w-[90rem] mx-auto"
           >
             <h2 className="text-3xl font-extrabold text-gray-900">Our Core Values</h2>
             <p className="mt-4 text-xl text-gray-600">
               The principles that drive our commitment to your success
             </p>
           </motion.div>
-          <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3 max-w-[90rem] mx-auto">
             {values.map((value, index) => (
               <motion.div
                 key={value.title}
@@ -136,13 +136,13 @@ export default function AboutPage() {
 
       {/* Value Proposition Section */}
       <div className="py-24 bg-gradient-to-b from-gray-50 to-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 2xl:px-16">
           <motion.div
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true }}
             variants={fadeIn}
-            className="text-center mb-16"
+            className="text-center mb-16 max-w-[90rem] mx-auto"
           >
             <h2 className="text-3xl font-extrabold text-gray-900">Our Commitment</h2>
             <p className="mt-6 text-xl text-gray-600 max-w-3xl mx-auto">
@@ -150,7 +150,7 @@ export default function AboutPage() {
             </p>
           </motion.div>
 
-          <div className="mt-16">
+          <div className="mt-16 max-w-[90rem] mx-auto">
             <div className="relative">
               <div className="absolute left-1/2 transform -translate-x-px h-full w-0.5 bg-gradient-to-b from-blue-600 to-indigo-600 opacity-20" />
               
@@ -188,13 +188,13 @@ export default function AboutPage() {
 
       {/* CTA Section */}
       <div className="bg-gradient-to-br from-blue-600 to-indigo-700">
-        <div className="max-w-7xl mx-auto py-16 px-4 sm:px-6 lg:px-8">
+        <div className="w-full mx-auto py-16 px-4 sm:px-6 lg:px-8 2xl:px-16">
           <motion.div
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true }}
             variants={fadeIn}
-            className="text-center"
+            className="text-center max-w-[90rem] mx-auto"
           >
             <h2 className="text-3xl font-extrabold text-white mb-8">
               Ready to transform your territory management?

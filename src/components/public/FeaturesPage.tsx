@@ -76,12 +76,12 @@ export default function FeaturesPage() {
     <div className="min-h-screen bg-gradient-to-b from-white via-blue-50 to-white">
       {/* Hero Section */}
       <div className="relative">
-        <div className="max-w-7xl mx-auto py-20 px-4 sm:px-6 lg:px-8">
+        <div className="w-full mx-auto py-20 px-4 sm:px-6 lg:px-8 2xl:px-16">
           <motion.div
             initial="hidden"
             animate="visible"
             variants={fadeIn}
-            className="text-center"
+            className="text-center max-w-[90rem] mx-auto"
           >
             <h1 className="text-4xl tracking-tight font-extrabold text-gray-900 sm:text-5xl md:text-6xl">
               <span className="block">Features that Drive</span>
@@ -89,7 +89,7 @@ export default function FeaturesPage() {
                 Business Growth
               </span>
             </h1>
-            <p className="mt-6 max-w-lg mx-auto text-xl text-gray-500 sm:max-w-3xl">
+            <p className="mt-6 max-w-3xl mx-auto text-xl text-gray-500">
               EffiMap delivers powerful tools that help you make data-driven decisions about territory management and geographic strategy.
             </p>
           </motion.div>
@@ -98,8 +98,8 @@ export default function FeaturesPage() {
 
       {/* Features Grid */}
       <div ref={ref} className="py-24">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 2xl:px-16">
+          <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3 max-w-[90rem] mx-auto">
             {features.map((feature, index) => (
               <motion.div
                 key={feature.title}
@@ -128,8 +128,8 @@ export default function FeaturesPage() {
 
       {/* Feature Showcase Section */}
       <div className="py-24 bg-gradient-to-b from-gray-50 to-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
+        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 2xl:px-16">
+          <div className="text-center mb-16 max-w-[90rem] mx-auto">
             <h2 className="text-3xl font-extrabold text-gray-900 sm:text-4xl">
               See EffiMap Pro in Action
             </h2>
@@ -137,7 +137,7 @@ export default function FeaturesPage() {
               Powerful features designed for modern territory management
             </p>
           </div>
-          <div className="space-y-24">
+          <div className="space-y-24 max-w-[90rem] mx-auto">
             {showcaseFeatures.map((feature, index) => (
               <motion.div
                 key={feature.title}
@@ -175,13 +175,13 @@ export default function FeaturesPage() {
 
       {/* CTA Section */}
       <div className="bg-gradient-to-br from-blue-600 to-indigo-700">
-        <div className="max-w-7xl mx-auto py-16 px-4 sm:px-6 lg:px-8">
+        <div className="w-full mx-auto py-16 px-4 sm:px-6 lg:px-8 2xl:px-16">
           <motion.div
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true }}
             variants={fadeIn}
-            className="text-center"
+            className="text-center max-w-[90rem] mx-auto"
           >
             <h2 className="text-3xl font-extrabold text-white mb-8">
               Ready to optimize your territory management?
