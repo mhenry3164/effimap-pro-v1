@@ -1,0 +1,19 @@
+rules_version = '2';
+
+// Craft rules based on data in your Firestore database
+// allow write: if firestore.get(
+//    /databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin;
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Allow public read access to boundary files
+    match /boundaries/{boundaryType}/{file=**} {
+      allow read: if true;  // Public read access for boundary files
+      allow write: if false; // No public write access
+    }
+    
+    // Default rule for all other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

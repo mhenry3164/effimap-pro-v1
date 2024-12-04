@@ -1,0 +1,74 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isAdmin(tenantId) {
+      return isSignedIn() && 
+        exists(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/tenants/$(tenantId)/users/$(request.auth.uid)).data.role == 'admin';
+    }
+    
+    function hasValidSubscription(tenantId) {
+      let tenant = get(/databases/$(database)/documents/tenants/$(tenantId));
+      return tenant.data.subscription.status == 'active' || 
+             tenant.data.subscription.status == 'trialing';
+    }
+    
+    // Tenant rules
+    match /tenants/{tenantId} {
+      // Basic tenant document access
+      allow read: if isSignedIn() && 
+        (request.auth.uid in resource.data.users || request.auth.uid in resource.data.admins);
+      allow create: if isSignedIn();
+      allow update: if isAdmin(tenantId);
+      allow delete: if isAdmin(tenantId);
+      
+      // Subscription-specific rules
+      match /subscription/{document=**} {
+        allow read: if isSignedIn() && 
+          (request.auth.uid in get(/databases/$(database)/documents/tenants/$(tenantId)).data.users ||
+           request.auth.uid in get(/databases/$(database)/documents/tenants/$(tenantId)).data.admins);
+        allow write: if false; // Only allow writes through Firebase Functions
+      }
+      
+      // User management rules
+      match /users/{userId} {
+        allow read: if isSignedIn() && 
+          (request.auth.uid in get(/databases/$(database)/documents/tenants/$(tenantId)).data.users ||
+           request.auth.uid in get(/databases/$(database)/documents/tenants/$(tenantId)).data.admins);
+        allow create, update: if isAdmin(tenantId) && hasValidSubscription(tenantId);
+        allow delete: if isAdmin(tenantId);
+      }
+      
+      // Feature-specific rules based on subscription
+      match /territories/{territoryId} {
+        allow read: if isSignedIn() && 
+          (request.auth.uid in get(/databases/$(database)/documents/tenants/$(tenantId)).data.users ||
+           request.auth.uid in get(/databases/$(database)/documents/tenants/$(tenantId)).data.admins) &&
+          hasValidSubscription(tenantId);
+        allow write: if isAdmin(tenantId) && hasValidSubscription(tenantId);
+      }
+      
+      // Notification rules
+      match /notifications/{notificationId} {
+        // Users can only read their own notifications
+        allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+        
+        // Users can only mark their own notifications as read
+        allow update: if isSignedIn() && 
+          resource.data.userId == request.auth.uid && 
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+          
+        // Only system functions can create notifications
+        allow create: if false; // Notifications are created through Cloud Functions
+        
+        // Users can delete their own notifications
+        allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+      }
+    }
+  }
+}

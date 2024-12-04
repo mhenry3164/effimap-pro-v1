@@ -1,0 +1,19 @@
+{
+  "name": "effimap-scripts",
+  "version": "1.0.0",
+  "description": "EffiMap Pro setup scripts",
+  "type": "module",
+  "scripts": {
+    "setup-test": "ts-node setup-test-environment.ts",
+    "prepare-boundaries": "node prepare-boundaries.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "firebase-admin": "^11.10.1",
+    "geojson-vt": "^3.2.1",
+    "pako": "^2.1.0",
+    "pbf": "^4.0.1",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.0.4"
+  }
+}

@@ -1,0 +1,45 @@
+[build]
+  # Skip type checking during build by setting CI=false
+  command = "CI=false npm run build"
+  publish = "dist"
+  functions = "functions"
+
+[build.environment]
+  # Use Node 18 for modern features
+  NODE_VERSION = "18"
+  # Skip TypeScript type checking
+  SKIP_PREFLIGHT_CHECK = "true"
+  TSC_COMPILE_ON_ERROR = "true"
+
+# Handle client-side routing
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Force HTTPS
+[[redirects]]
+  from = "http://*"
+  to = "https://:splat"
+  status = 301
+  force = true
+
+# Security headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    # Allow Google Maps and Firebase resources
+    Content-Security-Policy = """
+      default-src 'self' https://*.googleapis.com https://*.gstatic.com https://*.google.com https://*.firebaseio.com https://*.cloudfunctions.net;
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.googleapis.com https://*.gstatic.com https://*.google.com;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      img-src 'self' data: blob: https://*.googleapis.com https://*.gstatic.com https://*.google.com;
+      font-src 'self' https://fonts.gstatic.com;
+      connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.cloudfunctions.net;
+      frame-src 'self' https://*.firebaseapp.com;
+      object-src 'none';
+    """

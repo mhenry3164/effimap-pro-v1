@@ -1,0 +1,30 @@
+{
+  "name": "functions",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "engines": {
+    "node": "18"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "@types/handlebars": "^4.0.40",
+    "@types/nodemailer": "^6.4.17",
+    "cors": "^2.8.5",
+    "firebase-admin": "^11.8.0",
+    "firebase-functions": "^4.3.1",
+    "handlebars": "^4.7.8",
+    "nodemailer": "^6.9.16",
+    "stripe": "^14.5.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.4"
+  },
+  "private": true
+}
