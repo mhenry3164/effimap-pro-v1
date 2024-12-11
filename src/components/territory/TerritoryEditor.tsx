@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { Territory, TerritoryPoint, TerritoryUpdate } from '../../types/territory';
 import { DEFAULT_TERRITORY_STYLE } from '../../config/constants';
 import { Timestamp } from 'firebase/firestore';
+import { useMap } from '../../contexts/MapContext';
+import toast from 'react-hot-toast'; // Import toast
 
 interface TerritoryEditorProps {
   territory: Territory;
-  onSave: (territory: TerritoryUpdate) => Promise<void>;
+  onSave: (territory: TerritoryUpdate) => Promise<boolean>; // Update return type
   onClose: () => void;
   map: google.maps.Map;
 }
@@ -16,29 +18,32 @@ const TerritoryEditor: React.FC<TerritoryEditorProps> = ({
   onClose,
   map
 }) => {
-  const [isDrawing, setIsDrawing] = useState(false);
+  const { isDrawingMode, setIsDrawingMode } = useMap();
   const [isSaving, setIsSaving] = useState(false);
   const [points, setPoints] = useState<TerritoryPoint[]>(territory.boundary?.coordinates || []);
-  const [drawingPath, setDrawingPath] = useState<google.maps.Polyline | null>(null);
   const [polygon, setPolygon] = useState<google.maps.Polygon | null>(null);
+  const [drawingPath, setDrawingPath] = useState<google.maps.Polyline | null>(null);
+  const [clickListener, setClickListener] = useState<google.maps.MapsEventListener | null>(null);
 
-  // Create polygon only once when component mounts
+  // Create polygon for editing when component mounts
   useEffect(() => {
     if (!map) return;
 
+    // Create the editable polygon
     const newPolygon = new google.maps.Polygon({
+      map,
       paths: points.map(point => ({ lat: point.lat, lng: point.lng })),
       ...DEFAULT_TERRITORY_STYLE,
       ...territory.boundary?.style,
       editable: true,
-      draggable: true
+      draggable: true,
+      geodesic: true
     });
 
-    newPolygon.setMap(map);
     setPolygon(newPolygon);
 
-    // Add listeners
-    const mouseUpListener = newPolygon.addListener('mouseup', () => {
+    // Add listener for path changes
+    const pathListener = newPolygon.addListener('mouseup', () => {
       const path = newPolygon.getPath();
       const newPoints: TerritoryPoint[] = [];
       for (let i = 0; i < path.getLength(); i++) {
@@ -52,56 +57,76 @@ const TerritoryEditor: React.FC<TerritoryEditorProps> = ({
       setPoints(newPoints);
     });
 
-    // Cleanup only when unmounting
     return () => {
-      google.maps.event.removeListener(mouseUpListener);
+      google.maps.event.removeListener(pathListener);
       if (newPolygon) {
-        // Make sure to set editable to false before removing
-        newPolygon.setEditable(false);
         newPolygon.setMap(null);
       }
     };
-  }, [map]); // Only depend on map
+  }, [map]);
 
-  // Update polygon path when points change
+  // Handle drawing mode for adding new points
   useEffect(() => {
-    if (!polygon || !points.length) return;
+    if (!isDrawingMode || !map || !polygon) return;
 
-    const path = polygon.getPath();
-    path.clear();
-    points.forEach(point => {
-      path.push(new google.maps.LatLng(point.lat, point.lng));
+    // Create polyline for drawing new points
+    const polyline = new google.maps.Polyline({
+      map,
+      path: [],
+      geodesic: true,
+      strokeColor: DEFAULT_TERRITORY_STYLE.strokeColor,
+      strokeOpacity: 1.0,
+      strokeWeight: 2
     });
-  }, [points]);
 
-  const cleanupMapObjects = () => {
-    // Clean up drawing path if exists
-    if (drawingPath) {
-      drawingPath.setMap(null);
-      setDrawingPath(null);
-    }
+    setDrawingPath(polyline);
 
-    // Clean up polygon if exists
-    if (polygon) {
-      // First disable editing to remove edit points
-      polygon.setEditable(false);
-      // Then remove from map
-      polygon.setMap(null);
-      setPolygon(null);
-    }
-  };
+    // Add click listener for adding new points
+    const listener = map.addListener('click', (e: google.maps.MapMouseEvent) => {
+      if (!e.latLng) return;
+
+      const path = polygon.getPath();
+      path.push(e.latLng);
+
+      const newPoint: TerritoryPoint = {
+        lat: e.latLng.lat(),
+        lng: e.latLng.lng(),
+        index: path.getLength() - 1
+      };
+
+      setPoints(prev => [...prev, newPoint]);
+    });
+
+    setClickListener(listener);
+
+    return () => {
+      if (polyline) {
+        polyline.setMap(null);
+      }
+      if (listener) {
+        google.maps.event.removeListener(listener);
+      }
+    };
+  }, [isDrawingMode, map, polygon]);
 
   const handleSave = async () => {
-    if (isSaving) return;
+    if (isSaving || !points.length) return;
     
     setIsSaving(true);
     try {
+      // Ensure polygon is closed
+      const firstPoint = points[0];
+      const lastPoint = points[points.length - 1];
+      const closedPoints = firstPoint.lat === lastPoint.lat && firstPoint.lng === lastPoint.lng
+        ? points
+        : [...points, { ...firstPoint, index: points.length }];
+
       // Prepare update data
       const update: TerritoryUpdate = {
         id: territory.id,
         boundary: {
           type: 'Polygon',
-          coordinates: points,
+          coordinates: closedPoints,
           style: territory.boundary?.style
         },
         metadata: {
@@ -111,115 +136,80 @@ const TerritoryEditor: React.FC<TerritoryEditorProps> = ({
         }
       };
 
-      // First disable editing to remove edit points
+      // Disable editing before saving
       if (polygon) {
         polygon.setEditable(false);
       }
 
-      // Let parent handle the save
-      await onSave(update);
-
-      // Clean up all map objects after successful save
-      cleanupMapObjects();
-
-      // Close the editor
-      onClose();
+      // Wait for save and refresh to complete
+      const success = await onSave(update);
+      
+      if (success) {
+        cleanup();
+        onClose();
+      } else {
+        // Re-enable editing if save failed
+        if (polygon) {
+          polygon.setEditable(true);
+        }
+        toast.error('Failed to save territory changes. Please try again.');
+      }
     } catch (error) {
       console.error('Error saving territory:', error);
       // Re-enable editing if save failed
       if (polygon) {
         polygon.setEditable(true);
       }
-      throw error;
+      toast.error('Failed to save territory changes. Please try again.');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleStartDrawing = () => {
-    if (!map) return;
-
-    setIsDrawing(true);
-    const polyline = new google.maps.Polyline({
-      map,
-      path: [],
-      strokeColor: DEFAULT_TERRITORY_STYLE.strokeColor,
-      strokeOpacity: 1.0,
-      strokeWeight: 2
-    });
-
-    setDrawingPath(polyline);
-
-    // Add click listener to map
-    const clickListener = map.addListener('click', (e: google.maps.MapMouseEvent) => {
-      if (!e.latLng) return;
-
-      const path = polyline.getPath();
-      path.push(e.latLng);
-
-      const point: TerritoryPoint = {
-        lat: e.latLng.lat(),
-        lng: e.latLng.lng(),
-        index: path.getLength() - 1
-      };
-
-      setPoints(prev => [...prev, point]);
-    });
-
-    return () => {
-      google.maps.event.removeListener(clickListener);
-      if (drawingPath) {
-        drawingPath.setMap(null);
-      }
-    };
-  };
-
-  const handleFinishDrawing = () => {
-    setIsDrawing(false);
+  const cleanup = () => {
+    if (polygon) {
+      polygon.setMap(null);
+      setPolygon(null);
+    }
     if (drawingPath) {
       drawingPath.setMap(null);
       setDrawingPath(null);
     }
-  };
-
-  const handleCancel = () => {
-    cleanupMapObjects();
-    onClose();
+    if (clickListener) {
+      google.maps.event.removeListener(clickListener);
+      setClickListener(null);
+    }
+    setIsDrawingMode(false);
   };
 
   return (
-    <div className="absolute bottom-4 right-4 space-y-2">
-      {!isDrawing ? (
+    <div className="absolute bottom-4 right-4 space-y-2 bg-background/95 p-4 rounded-lg shadow-lg">
+      <div className="flex flex-col gap-2">
         <button
-          onClick={handleStartDrawing}
+          onClick={() => setIsDrawingMode(!isDrawingMode)}
           disabled={isSaving}
           className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 disabled:opacity-50"
         >
-          Start Drawing
+          {isDrawingMode ? 'Finish Drawing' : 'Add Points'}
         </button>
-      ) : (
         <button
-          onClick={handleFinishDrawing}
-          disabled={isSaving}
+          onClick={handleSave}
+          disabled={isSaving || !points.length}
           className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 disabled:opacity-50"
         >
-          Finish Drawing
+          {isSaving ? 'Saving...' : 'Save Changes'}
         </button>
-      )}
-      <button
-        onClick={handleSave}
-        disabled={isSaving}
-        className="bg-primary text-primary-foreground px-4 py-2 rounded-md hover:bg-primary/90 disabled:opacity-50"
-      >
-        {isSaving ? 'Saving...' : 'Save Changes'}
-      </button>
-      <button
-        onClick={handleCancel}
-        disabled={isSaving}
-        className="bg-secondary text-secondary-foreground px-4 py-2 rounded-md hover:bg-secondary/90 disabled:opacity-50"
-      >
-        Cancel
-      </button>
+        <button
+          onClick={() => {
+            cleanup();
+            onClose();
+          }}
+          disabled={isSaving}
+          className="bg-secondary text-secondary-foreground px-4 py-2 rounded-md hover:bg-secondary/90 disabled:opacity-50"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 };

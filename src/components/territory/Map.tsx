@@ -363,39 +363,43 @@ export const Map: React.FC = () => {
       try {
         if (!user?.tenantId) {
           toast.error('No tenant ID found');
-          return;
+          return false;
         }
 
         if (!editedTerritory.id) {
           toast.error('Territory ID is missing');
-          return;
+          return false;
         }
 
-        // Save the update
+        // Step 1: Save the update
         await territoryService.update(user.tenantId, editedTerritory.id, editedTerritory);
         
-        // Log the activity
-        await activityService.logActivity({
+        // Step 2: Refresh territories data
+        await refreshTerritories();
+        
+        // Step 3: Update UI states
+        setIsEditing(false);
+        setSelectedTerritoryState(null);
+        setShowTooltip(false);
+
+        // Step 4: Log activity (non-blocking)
+        activityService.logActivity(user.tenantId, {
           type: 'edit',
           entityType: 'territory',
           entityId: editedTerritory.id,
           entityName: editedTerritory.name || 'Unnamed Territory',
           userId: user.id,
-          userName: user.displayName || 'Unknown User',
-          tenantId: user.tenantId,
           details: {
             boundary: editedTerritory.boundary
           }
-        });
+        }).catch(console.error); // Handle logging error separately
         
-        // Reset edit state and refresh
-        setIsEditing(false);
-        await refreshTerritories();
-        
+        // Step 5: Show success message
         toast.success('Territory updated successfully');
+        return true;
       } catch (error) {
         console.error('Error updating territory:', error);
-        toast.error('Failed to update territory');
+        return false;
       }
     },
     [user?.tenantId, refreshTerritories]
@@ -409,22 +413,36 @@ export const Map: React.FC = () => {
     if (!selectedTerritoryState?.id || !user?.tenantId) return;
 
     try {
+      // Step 1: Delete the territory
       await territoryService.delete(user.tenantId, selectedTerritoryState.id, user.id);
-
-      // Clear UI state
+      
+      // Step 2: Refresh territories data to ensure consistency
+      await refreshTerritories();
+      
+      // Step 3: Update UI states
       setShowDeleteConfirm(false);
       setSelectedTerritoryState(null);
       setShowTooltip(false);
 
-      // Update territories list
-      setTerritories((prev) => prev.filter((t) => t.id !== selectedTerritoryState.id));
-
+      // Step 4: Log activity (non-blocking)
+      activityService.logActivity(user.tenantId, {
+        type: 'delete',
+        entityType: 'territory',
+        entityId: selectedTerritoryState.id,
+        entityName: selectedTerritoryState.name || 'Unnamed Territory',
+        userId: user.id,
+        details: {
+          territoryType: selectedTerritoryState.type
+        }
+      }).catch(console.error); // Handle logging error separately
+      
+      // Step 5: Show success message
       toast.success('Territory deleted successfully');
     } catch (error) {
       console.error('Error deleting territory:', error);
       toast.error('Failed to delete territory');
     }
-  }, [selectedTerritoryState, user]);
+  }, [selectedTerritoryState, user, refreshTerritories]);
 
   const handleStyleSave = useCallback(async () => {
     if (!selectedTerritoryState?.id || !user?.tenantId) return;
@@ -559,10 +577,7 @@ export const Map: React.FC = () => {
                   isEditing={isEditing}
                 />
 
-                {/* Add HeatMapLayer */}
-                {heatMapData && heatMapLayerVisible && (
-                  <HeatMapLayer map={map} />
-                )}
+                <HeatMapLayer map={map} />
 
                 {/* Territory Editor */}
                 {isEditing && selectedTerritoryState && map && (
