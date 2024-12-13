@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { collection, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { useStore } from '../store';
 
 interface Tenant {
   id: string;
@@ -61,16 +62,24 @@ interface TenantProviderProps {
 }
 
 export function TenantProvider({ children }: TenantProviderProps) {
+  const { user } = useStore();
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     const fetchTenant = async () => {
+      if (!user?.tenantId) {
+        setTenant(null);
+        setLoading(false);
+        return;
+      }
+
       try {
-        // For now, we're using the hardcoded tenant ID
-        const tenantId = 'heavy-machines';
-        const tenantRef = doc(collection(db, 'tenants'), tenantId);
+        setLoading(true);
+        setError(null);
+        
+        const tenantRef = doc(collection(db, 'tenants'), user.tenantId);
         const tenantDoc = await getDoc(tenantRef);
 
         if (tenantDoc.exists()) {
@@ -79,14 +88,16 @@ export function TenantProvider({ children }: TenantProviderProps) {
           throw new Error('Tenant not found');
         }
       } catch (err) {
+        console.error('Error fetching tenant:', err);
         setError(err instanceof Error ? err : new Error('Failed to fetch tenant'));
+        setTenant(null);
       } finally {
         setLoading(false);
       }
     };
 
     fetchTenant();
-  }, []);
+  }, [user?.tenantId]);
 
   const updateTenant = async (data: Partial<Tenant>) => {
     if (!tenant) return;
