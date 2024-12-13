@@ -53,14 +53,18 @@ const getStatusChipProps = (status: string) => {
 export const TerritoryList: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { tenant } = useTenant();
+  const { tenant, error: tenantError } = useTenant();
   const [territories, setTerritories] = useState<Territory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchTerritories = async () => {
-      if (!tenant?.id) return;
+      if (!tenant?.id) {
+        setError(tenantError?.message || 'No tenant selected');
+        setLoading(false);
+        return;
+      }
       
       try {
         setLoading(true);
@@ -75,7 +79,7 @@ export const TerritoryList: React.FC = () => {
     };
 
     fetchTerritories();
-  }, [tenant?.id]);
+  }, [tenant?.id, tenantError]);
 
   const handleDelete = async (territoryId: string) => {
     if (!tenant?.id) return;
@@ -98,8 +102,15 @@ export const TerritoryList: React.FC = () => {
 
   if (error) {
     return (
-      <Box p={3}>
-        <Typography color="error">{error}</Typography>
+      <Box p={3} display="flex" flexDirection="column" alignItems="center" gap={2}>
+        <Typography color="error" variant="h6" textAlign="center">
+          {error}
+        </Typography>
+        {error.includes('No tenant selected') && (
+          <Typography color="textSecondary" textAlign="center">
+            Please contact your administrator to be assigned to a tenant.
+          </Typography>
+        )}
       </Box>
     );
   }

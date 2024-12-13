@@ -143,6 +143,7 @@ export const TenantProvider: React.FC<TenantProviderProps> = ({ children }) => {
     const loadTenant = async () => {
       if (!user?.tenantId) {
         console.log('No tenantId found for user, clearing tenant state');
+        setError(new Error('No tenant selected. Please contact your administrator to be assigned to a tenant.'));
         setTenant(null);
         setLoading(false);
         return;
@@ -164,7 +165,7 @@ export const TenantProvider: React.FC<TenantProviderProps> = ({ children }) => {
           
           if (!legacyAccess) {
             console.error('No tenant document or legacy access found');
-            setError(new Error('Tenant not found'));
+            setError(new Error('Tenant not found. Please contact your administrator.'));
             setTenant(null);
             return;
           }

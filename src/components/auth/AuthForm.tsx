@@ -1,28 +1,16 @@
-import React, { useState } from 'react';
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import React, { useState, useEffect } from 'react';
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, onAuthStateChanged } from 'firebase/auth';
 import { useNavigate, Navigate } from 'react-router-dom';
 import { MapPin } from 'lucide-react';
-import { auth } from '../../firebase';
+import { auth, db } from '../../firebase';
 import { useStore } from '../../store';
+import { getDoc, doc, setDoc } from 'firebase/firestore';
+import { FirebaseError } from 'firebase/app';
+import { User } from '../../types/user';
 
 interface AuthFormProps {
   type?: 'login' | 'signup';
 }
-
-const getErrorMessage = (code: string): string => {
-  switch (code) {
-    case 'auth/invalid-email':
-      return 'Invalid email address';
-    case 'auth/user-disabled':
-      return 'This account has been disabled';
-    case 'auth/user-not-found':
-      return 'No account found with this email';
-    case 'auth/wrong-password':
-      return 'Incorrect password';
-    default:
-      return 'An error occurred during sign in';
-  }
-};
 
 export default function AuthForm({ type = 'login' }: AuthFormProps) {
   const [email, setEmail] = useState('');
@@ -30,22 +18,131 @@ export default function AuthForm({ type = 'login' }: AuthFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { user } = useStore();
+  const { user, setUser, initAuth } = useStore();
 
-  // If user is already authenticated, redirect to appropriate route
-  if (user) {
-    if (user.platformRole === 'platformAdmin') {
-      return <Navigate to="/platform" replace />;
+  useEffect(() => {
+    const init = async () => {
+      try {
+        await initAuth();
+      } catch (error) {
+        console.error('Error initializing auth:', error);
+      }
+    };
+    init();
+  }, [initAuth]);
+
+  // Handle successful authentication
+  const handleAuthSuccess = async (firebaseUser: any) => {
+    try {
+      console.log('Handling auth success for user:', firebaseUser.uid);
+      const userDocRef = doc(db, 'users', firebaseUser.uid);
+      
+      // Create initial user data
+      const initialUserData = {
+        displayName: firebaseUser.displayName || '',
+        email: firebaseUser.email || '',
+        photoURL: firebaseUser.photoURL || '',
+        tenantId: firebaseUser.email?.endsWith('@heavy-llc.com') ? 'heavy-machines' : '',
+        organizationRoles: ['orgAdmin'],
+        platformRole: 'orgAdmin',
+        metadata: {
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          status: 'active'
+        }
+      };
+
+      let userData;
+      
+      try {
+        // First try to get existing user document
+        const userDoc = await getDoc(userDocRef);
+        console.log('Attempting to fetch user document...');
+        
+        if (userDoc.exists()) {
+          console.log('User document found');
+          userData = userDoc.data();
+        } else {
+          console.log('No user document found, creating new one...');
+          // Create new user document
+          await setDoc(userDocRef, initialUserData);
+          userData = initialUserData;
+        }
+      } catch (error: any) {
+        console.error('Firestore error:', error);
+        
+        if (error.code === 'permission-denied') {
+          // Handle permission denied error specifically
+          console.log('Permission denied, attempting to proceed with initial data');
+          // Use the initial data as fallback
+          userData = initialUserData;
+          
+          // Create the user object with initial data
+          const appUser: User = {
+            id: firebaseUser.uid,
+            ...initialUserData
+          };
+          
+          setUser(appUser);
+          console.log('Proceeding with default user profile');
+          
+          // Navigate based on email domain
+          if (firebaseUser.email?.endsWith('@heavy-llc.com')) {
+            navigate('/organization/dashboard');
+            return;
+          } else {
+            navigate('/dashboard');
+            return;
+          }
+        } else {
+          throw error; // Re-throw other errors
+        }
+      }
+      
+      // Create the user object for our application state
+      const appUser: User = {
+        id: firebaseUser.uid,
+        email: firebaseUser.email || '',
+        displayName: userData.displayName || firebaseUser.displayName || '',
+        photoURL: userData.photoURL || firebaseUser.photoURL || '',
+        tenantId: userData.tenantId || '',
+        organizationRoles: userData.organizationRoles || [],
+        platformRole: userData.platformRole || 'user',
+        metadata: userData.metadata || {
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          status: 'active'
+        }
+      };
+      
+      console.log('Setting user in store:', appUser);
+      setUser(appUser);
+      
+      // Determine redirect based on user role
+      if (appUser.platformRole === 'platformAdmin') {
+        navigate('/platform/dashboard');
+      } else if (appUser.organizationRoles?.includes('orgAdmin')) {
+        navigate('/organization/dashboard');
+      } else {
+        navigate('/dashboard');
+      }
+      
+    } catch (error) {
+      console.error('Detailed error in handleAuthSuccess:', error);
+      if (error instanceof FirebaseError) {
+        if (error.code === 'permission-denied') {
+          setError('Firestore access denied. Please contact support.');
+        } else {
+          setError(`Firebase error: ${error.message}`);
+        }
+      } else if (error instanceof Error) {
+        setError(error.message);
+      } else {
+        setError('Error loading user profile');
+      }
+      setUser(null);
     }
-    if (user.organizationRoles?.includes('orgAdmin')) {
-      return <Navigate to="/organization/dashboard" replace />;
-    }
-    if (user.organizationRoles?.includes('branchAdmin')) {
-      return <Navigate to="/branch/dashboard" replace />;
-    }
-    // Default fallback
-    return <Navigate to="/organization/dashboard" replace />;
-  }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,16 +150,41 @@ export default function AuthForm({ type = 'login' }: AuthFormProps) {
     setLoading(true);
 
     try {
-      console.log('Attempting sign in with:', email);
-      await signInWithEmailAndPassword(auth, email, password);
-      console.log('Sign in successful');
+      console.log('Starting sign in process...');
+      const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
+      console.log('Firebase auth successful:', userCredential.user.email);
+      await handleAuthSuccess(userCredential.user);
     } catch (err: any) {
-      console.error('Sign in error:', err);
-      setError(getErrorMessage(err.code));
+      console.error('Detailed sign in error:', {
+        code: err.code,
+        message: err.message,
+        stack: err.stack
+      });
+      
+      if (err.code === 'auth/invalid-credential') {
+        setError('Invalid email or password');
+      } else if (err.code === 'auth/too-many-requests') {
+        setError('Too many failed attempts. Please try again later.');
+      } else if (err.code === 'auth/network-request-failed') {
+        setError('Network error. Please check your connection.');
+      } else {
+        setError(err.message || 'An error occurred during sign in');
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  // If already authenticated, redirect
+  if (user) {
+    if (user.platformRole === 'platformAdmin') {
+      return <Navigate to="/platform/dashboard" replace />;
+    }
+    if (user.organizationRoles?.includes('orgAdmin')) {
+      return <Navigate to="/organization/dashboard" replace />;
+    }
+    return <Navigate to="/dashboard" replace />;
+  }
 
   const handleGoogleSignIn = async () => {
     setError(null);
@@ -73,7 +195,7 @@ export default function AuthForm({ type = 'login' }: AuthFormProps) {
       await signInWithPopup(auth, provider);
     } catch (err: any) {
       console.error('Google sign in error:', err);
-      setError(getErrorMessage(err.code));
+      setError('An error occurred during sign in');
     } finally {
       setLoading(false);
     }

@@ -19,7 +19,7 @@ interface StoreState {
   user: User | null;
   loading: LoadingState;
   setUser: (user: User | null) => void;
-  initAuth: () => void;
+  initAuth: () => Promise<User | null>;
   
   // Loading State
   setLoading: (key: keyof LoadingState, value: boolean) => void;
@@ -68,93 +68,111 @@ export const useStore = create<StoreState>()(
       initAuth: () => {
         console.log('Initializing auth...');
         set(state => ({ loading: { ...state.loading, auth: true } }));
-        const unsubscribe = onAuthStateChanged(auth, async (user) => {
-          console.log('Auth state changed:', user?.email);
-          if (user) {
-            try {
-              // Fetch user profile from Firestore
-              console.log('Fetching user profile for uid:', user.uid);
-              // Get user doc directly using the UID as the document ID
-              const userDocRef = doc(db, 'users', user.uid);
-              const userDoc = await getDoc(userDocRef);
-              
-              console.log('User doc exists?', userDoc.exists());
-              
-              if (userDoc.exists()) {
-                const userData = userDoc.data();
-                console.log('User data found:', userData);
+        
+        return new Promise((resolve) => {
+          const unsubscribe = onAuthStateChanged(auth, async (user) => {
+            console.log('Auth state changed:', user?.email);
+            if (user) {
+              try {
+                // Fetch user profile from Firestore
+                console.log('Fetching user profile for uid:', user.uid);
+                const userDocRef = doc(db, 'users', user.uid);
+                const userDoc = await getDoc(userDocRef);
+                
+                console.log('User doc exists?', userDoc.exists());
+                
+                if (userDoc.exists()) {
+                  const userData = userDoc.data();
+                  console.log('User data found:', userData);
 
-                // Convert Firebase user to our User type with roles
-                const appUser: User = {
-                  id: user.uid,
-                  email: user.email || '',
-                  displayName: userData.displayName || user.displayName || '',
-                  photoURL: userData.photoURL || user.photoURL || '',
-                  tenantId: userData.tenantId || '',
-                  organizationRoles: userData.organizationRoles || [],
-                  platformRole: userData.platformRole || 'user',
-                  metadata: userData.metadata || {
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                    status: 'active'
+                  // Convert Firebase user to our User type with roles
+                  const appUser: User = {
+                    id: user.uid,
+                    email: user.email || '',
+                    displayName: userData.displayName || user.displayName || '',
+                    photoURL: userData.photoURL || user.photoURL || '',
+                    tenantId: userData.tenantId || '',
+                    organizationRoles: userData.organizationRoles || [],
+                    platformRole: userData.platformRole || 'user',
+                    metadata: userData.metadata || {
+                      createdAt: new Date(),
+                      updatedAt: new Date(),
+                      status: 'active'
+                    }
+                  };
+
+                  // Load tenant data
+                  if (appUser.tenantId) {
+                    const tenantDocRef = doc(db, 'tenants', appUser.tenantId);
+                    const tenantDoc = await getDoc(tenantDocRef);
+                    if (tenantDoc.exists()) {
+                      const tenantData = tenantDoc.data();
+                      set({ tenant: { id: appUser.tenantId, ...tenantData } });
+                    }
                   }
-                };
-                console.log('Setting user in store:', appUser);
-                set({ user: appUser });
-
-                // If user has a tenantId, fetch tenant data
-                if (appUser.tenantId) {
-                  console.log('Fetching tenant data for id:', appUser.tenantId);
-                  const tenantDocRef = doc(db, 'tenants', appUser.tenantId);
-                  const tenantDoc = await getDoc(tenantDocRef);
                   
-                  if (tenantDoc.exists()) {
-                    const tenantData = tenantDoc.data();
-                    console.log('Tenant data found:', tenantData);
-                    set({ tenant: tenantData as Tenant });
-                  } else {
-                    console.log('No tenant found for id:', appUser.tenantId);
+                  set({ user: appUser, loading: { ...get().loading, auth: false } });
+                  console.log('User state updated:', appUser);
+                  resolve(appUser);
+                } else {
+                  console.log('No user document found, creating one');
+                  // Get tenant from email domain
+                  const emailDomain = user.email?.split('@')[1] || '';
+                  let tenantId = '';
+                  
+                  // Try to find matching tenant
+                  if (emailDomain) {
+                    const tenantsRef = collection(db, 'tenants');
+                    const tenantsQuery = query(tenantsRef, where('domains', 'array-contains', emailDomain));
+                    const tenantsSnapshot = await getDocs(tenantsQuery);
+                    
+                    if (!tenantsSnapshot.empty) {
+                      tenantId = tenantsSnapshot.docs[0].id;
+                    }
                   }
+
+                  const newUserData = {
+                    displayName: user.displayName || '',
+                    email: user.email || '',
+                    photoURL: user.photoURL || '',
+                    tenantId: tenantId,
+                    organizationRoles: ['user'],
+                    platformRole: 'user',
+                    metadata: {
+                      createdAt: new Date(),
+                      updatedAt: new Date(),
+                      status: 'active'
+                    }
+                  };
+                  
+                  await setDoc(userDocRef, newUserData);
+                  const appUser = { id: user.uid, ...newUserData };
+
+                  // Load tenant data if we found one
+                  if (tenantId) {
+                    const tenantDocRef = doc(db, 'tenants', tenantId);
+                    const tenantDoc = await getDoc(tenantDocRef);
+                    if (tenantDoc.exists()) {
+                      const tenantData = tenantDoc.data();
+                      set({ tenant: { id: tenantId, ...tenantData } });
+                    }
+                  }
+
+                  set({ user: appUser, loading: { ...get().loading, auth: false } });
+                  resolve(appUser);
                 }
-              } else {
-                console.log('No user document found, creating one');
-                // Create new user document
-                const newUserData = {
-                  displayName: user.displayName || '',
-                  email: user.email || '',
-                  photoURL: user.photoURL || '',
-                  tenantId: user.email?.endsWith('@heavy-llc.com') ? 'heavy-machines' : '',
-                  organizationRoles: ['orgAdmin'],
-                  platformRole: 'orgAdmin',
-                  metadata: {
-                    createdAt: new Date(),
-                    createdBy: 'system',
-                    updatedAt: new Date(),
-                    updatedBy: 'system'
-                  }
-                };
-                
-                await setDoc(userDocRef, newUserData);
-                console.log('Created new user document:', newUserData);
-                
-                const appUser: User = {
-                  id: user.uid,
-                  ...newUserData
-                };
-                console.log('Setting new user in store:', appUser);
-                set({ user: appUser });
+              } catch (error) {
+                console.error('Error in auth initialization:', error);
+                set({ user: null, loading: { ...get().loading, auth: false } });
+                resolve(null);
               }
-            } catch (error) {
-              console.error('Error fetching user data:', error);
-              set({ user: null });
+            } else {
+              console.log('No user found in auth state');
+              set({ user: null, loading: { ...get().loading, auth: false } });
+              resolve(null);
             }
-          } else {
-            console.log('No user, clearing store');
-            set({ user: null, tenant: null });
-          }
-          set(state => ({ loading: { ...state.loading, auth: false } }));
+          });
         });
-        return unsubscribe;
       },
       
       // Loading State
