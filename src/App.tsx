@@ -41,7 +41,7 @@ import PublicLayout from './components/public/PublicLayout';
 import MainLayout from './components/layout/MainLayout';
 
 // Context Providers
-import TenantProvider from './providers/TenantProvider';
+import { TenantProvider } from './contexts/TenantContext';
 import { Toaster } from 'react-hot-toast';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {

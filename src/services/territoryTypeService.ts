@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, addDoc, updateDoc, deleteDoc, serverTimestamp, Timestamp, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 
 export interface TerritoryTypeDefinition {
@@ -20,8 +20,28 @@ export interface TerritoryTypeDefinition {
 export class TerritoryTypeService {
   async getAll(tenantId: string): Promise<TerritoryTypeDefinition[]> {
     try {
+      // Get the tenant document first to ensure it exists
+      const tenantRef = doc(db, 'tenants', tenantId);
+      const tenantDoc = await getDoc(tenantRef);
+      
+      if (!tenantDoc.exists()) {
+        throw new Error('Tenant not found');
+      }
+
+      // Get territory types from the tenant-specific collection
       const typesRef = collection(db, 'tenants', tenantId, 'territoryTypes');
       const snapshot = await getDocs(typesRef);
+      
+      if (snapshot.empty) {
+        // If no types exist, initialize default types
+        await this.initializeDefaultTypes(tenantId);
+        const newSnapshot = await getDocs(typesRef);
+        return newSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        } as TerritoryTypeDefinition));
+      }
+
       return snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
@@ -95,15 +115,27 @@ export class TerritoryTypeService {
     ];
 
     try {
-      const existingTypes = await this.getAll(tenantId);
+      const batch = writeBatch(db);
+      const typesRef = collection(db, 'tenants', tenantId, 'territoryTypes');
+      
+      // Check if types already exist
+      const snapshot = await getDocs(typesRef);
+      const existingTypes = snapshot.docs.map(doc => doc.data().code);
       
       for (const type of defaultTypes) {
-        if (!existingTypes.some(t => t.code === type.code)) {
-          await this.create(tenantId, type);
+        if (!existingTypes.includes(type.code)) {
+          const newTypeRef = doc(typesRef);
+          batch.set(newTypeRef, {
+            ...type,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
         }
       }
+      
+      await batch.commit();
     } catch (error) {
-      console.error('Error initializing default territory types:', error);
+      console.error('Error initializing default types:', error);
       throw error;
     }
   }

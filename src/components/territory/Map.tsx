@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { GoogleMap, useJsApiLoader } from '@react-google-maps/api';
 import { useAuth } from '../../hooks/useAuth';
+import { useTenant } from '../../hooks/useTenant';
 import { toast } from 'react-hot-toast';
 import { useStore } from '../../store';
 import { useMap } from '../../contexts/MapContext';
@@ -53,6 +54,7 @@ interface LayerRefs {
 export const Map: React.FC = () => {
   // Initialize hooks first
   const { user } = useAuth();
+  const { tenant, loading: tenantLoading } = useTenant();
   const { isLoaded, loadError } = useJsApiLoader(googleMapsConfig);
   const {
     selectedTerritory,
@@ -70,6 +72,18 @@ export const Map: React.FC = () => {
     dataLayers 
   } = useMap();
 
+  // Early return if no tenant
+  if (!tenantLoading && !tenant) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full p-4 bg-gray-50">
+        <h2 className="text-xl font-semibold text-gray-700 mb-2">No Tenant Selected</h2>
+        <p className="text-gray-600 text-center">
+          Please contact your administrator to be assigned to a tenant.
+        </p>
+      </div>
+    );
+  }
+
   // Initialize state
   const [map, setMap] = useState<google.maps.Map | null>(null);
   const [territories, setTerritories] = useState<Territory[]>([]);
@@ -80,13 +94,6 @@ export const Map: React.FC = () => {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [drawnShape, setDrawnShape] = useState<google.maps.Polygon | null>(null);
-  const [newTerritory, setNewTerritory] = useState<{
-    boundary: {
-      type: string;
-      coordinates: TerritoryPoint[];
-      style: TerritoryStyle;
-    };
-  } | null>(null);
   const [showEditor, setShowEditor] = useState(false);
   const [territoryStyle, setTerritoryStyle] = useState<TerritoryStyle>({
     fillColor: '#FF0000',
@@ -106,30 +113,66 @@ export const Map: React.FC = () => {
   // Initialize dependent hooks
   const { details: territoryDetails, isLoading: detailsLoading } = useTerritoryDetails(selectedTerritoryState);
 
+  // Define callbacks first
+  const refreshTerritories = useCallback(async () => {
+    if (!tenant?.id || !map) return;
+
+    try {
+      const fetchedTerritories = await territoryService.getAll(tenant.id);
+      setTerritories(fetchedTerritories);
+    } catch (error) {
+      console.error('Error fetching territories:', error);
+      toast.error('Failed to fetch territories');
+    }
+  }, [tenant?.id, map]);
+
   // Load territory types
   const loadTerritoryTypes = useCallback(async () => {
-    if (user?.tenantId) {
-      try {
-        const types = await territoryTypeService.getAll(user.tenantId);
-        setTerritoryTypes(types);
-      } catch (error) {
-        console.error('Error loading territory types:', error);
-        toast.error('Failed to load territory types');
-      }
+    if (!tenant?.id) {
+      console.log('No tenant ID available for loading territory types');
+      return;
     }
-  }, [user?.tenantId, setTerritoryTypes]);
 
-  // Effect to sync territories with store
+    try {
+      console.log('Loading territory types for tenant:', tenant.id);
+      const types = await territoryTypeService.getAll(tenant.id);
+      console.log('Loaded territory types:', types);
+      if (types.length > 0) {
+        setTerritoryTypes(types);
+      } else {
+        // Initialize default types if none exist
+        await territoryTypeService.initializeDefaultTypes(tenant.id);
+        const newTypes = await territoryTypeService.getAll(tenant.id);
+        setTerritoryTypes(newTypes);
+      }
+    } catch (error) {
+      console.error('Error loading territory types:', error);
+      toast.error('Failed to load territory types');
+    }
+  }, [tenant?.id, setTerritoryTypes]);
+
+  // Effects
   useEffect(() => {
     if (storeTerritories) {
       setTerritories(storeTerritories);
     }
   }, [storeTerritories]);
 
-  // Effect to sync selected territory with store
   useEffect(() => {
     setSelectedTerritoryState(selectedTerritory);
   }, [selectedTerritory]);
+
+  useEffect(() => {
+    if (tenant?.id) {
+      loadTerritoryTypes();
+    }
+  }, [tenant?.id, loadTerritoryTypes]);
+
+  useEffect(() => {
+    if (tenant?.id) {
+      refreshTerritories();
+    }
+  }, [tenant?.id, refreshTerritories]);
 
   // Effect to manage feature layers
   useEffect(() => {
@@ -221,37 +264,32 @@ export const Map: React.FC = () => {
 
   // Handlers and effects below...
 
-  const refreshTerritories = useCallback(async () => {
-    if (user?.tenantId && map) {
-      try {
-        const fetchedTerritories = await territoryService.getAll(user.tenantId);
-        setTerritories(fetchedTerritories);
-      } catch (error) {
-        console.error('Error fetching territories:', error);
-        toast.error('Failed to refresh territories');
-      }
-    }
-  }, [user?.tenantId, map]);
-
   const handleSaveTerritory = useCallback(
-    async (territoryData: NewTerritory) => {
+    async (formData: NewTerritory) => {
       try {
-        if (!user?.tenantId) {
+        if (!tenant?.id) {
           toast.error('No tenant ID found');
           return;
         }
 
-        if (!newTerritory?.boundary?.coordinates) {
-          toast.error('No territory boundary defined');
+        // Get coordinates from drawn shape
+        if (!drawnShape) {
+          toast.error('Please draw a territory boundary on the map');
           return;
         }
 
-        // Prepare territory data
+        const path = drawnShape.getPath();
+        const coordinates: TerritoryPoint[] = [];
+        path.forEach((point, index) => {
+          coordinates.push({ index, lat: point.lat(), lng: point.lng() });
+        });
+
+        // Create territory with coordinates
         const territory: Omit<Territory, 'id'> = {
-          ...territoryData,
+          ...formData,
           boundary: {
             type: 'Polygon',
-            coordinates: newTerritory.boundary.coordinates,
+            coordinates: coordinates,
             style: territoryStyle
           },
           status: 'active',
@@ -264,12 +302,11 @@ export const Map: React.FC = () => {
           }
         };
 
-        await territoryService.add(user.tenantId, territory);
+        await territoryService.add(tenant.id, territory);
 
-        // Clear drawing state
-        setNewTerritory(null);
-        setIsDrawingMode(false);
+        // Clean up drawing state
         setShowEditor(false);
+        setIsDrawingMode(false);
         if (drawnShape) {
           drawnShape.setMap(null);
           setDrawnShape(null);
@@ -284,13 +321,12 @@ export const Map: React.FC = () => {
         toast.error('Failed to create territory');
       }
     },
-    [user, newTerritory, territoryStyle, drawnShape, refreshTerritories, setIsDrawingMode]
+    [tenant, drawnShape, refreshTerritories, setIsDrawingMode, territoryStyle]
   );
 
   const handleNewTerritoryClose = useCallback(() => {
-    setNewTerritory(null);
-    setIsDrawingMode(false);
     setShowEditor(false);
+    setIsDrawingMode(false);
     if (drawnShape) {
       drawnShape.setMap(null);
       setDrawnShape(null);
@@ -305,19 +341,10 @@ export const Map: React.FC = () => {
         coordinates.push({ index, lat: point.lat(), lng: point.lng() });
       });
 
-      setNewTerritory({
-        boundary: {
-          type: 'Polygon',
-          coordinates: coordinates,
-          style: territoryStyle
-        }
-      });
-
-      // Keep the polygon visible for visualization
-      setDrawnShape(polygon);
       setShowEditor(true);
+      setDrawnShape(polygon);
     },
-    [territoryStyle]
+    []
   );
 
   const handleTerritorySelect = useCallback(
@@ -363,7 +390,7 @@ export const Map: React.FC = () => {
   const handleEditSave = useCallback(
     async (editedTerritory: TerritoryUpdate) => {
       try {
-        if (!user?.tenantId) {
+        if (!tenant?.id) {
           toast.error('No tenant ID found');
           return false;
         }
@@ -374,7 +401,7 @@ export const Map: React.FC = () => {
         }
 
         // Step 1: Save the update
-        await territoryService.update(user.tenantId, editedTerritory.id, editedTerritory);
+        await territoryService.update(tenant.id, editedTerritory.id, editedTerritory);
         
         // Step 2: Refresh territories data
         await refreshTerritories();
@@ -385,7 +412,7 @@ export const Map: React.FC = () => {
         setShowTooltip(false);
 
         // Step 4: Log activity (non-blocking)
-        activityService.logActivity(user.tenantId, {
+        activityService.logActivity(tenant.id, {
           type: 'edit',
           entityType: 'territory',
           entityId: editedTerritory.id,
@@ -404,7 +431,7 @@ export const Map: React.FC = () => {
         return false;
       }
     },
-    [user?.tenantId, refreshTerritories]
+    [tenant?.id, refreshTerritories]
   );
 
   const handleDeleteClick = useCallback(() => {
@@ -412,11 +439,11 @@ export const Map: React.FC = () => {
   }, []);
 
   const handleDeleteConfirm = useCallback(async () => {
-    if (!selectedTerritoryState?.id || !user?.tenantId) return;
+    if (!selectedTerritoryState?.id || !tenant?.id) return;
 
     try {
       // Step 1: Delete the territory
-      await territoryService.delete(user.tenantId, selectedTerritoryState.id, user.id);
+      await territoryService.delete(tenant.id, selectedTerritoryState.id, user.id);
       
       // Step 2: Refresh territories data to ensure consistency
       await refreshTerritories();
@@ -427,7 +454,7 @@ export const Map: React.FC = () => {
       setShowTooltip(false);
 
       // Step 4: Log activity (non-blocking)
-      activityService.logActivity(user.tenantId, {
+      activityService.logActivity(tenant.id, {
         type: 'delete',
         entityType: 'territory',
         entityId: selectedTerritoryState.id,
@@ -444,10 +471,10 @@ export const Map: React.FC = () => {
       console.error('Error deleting territory:', error);
       toast.error('Failed to delete territory');
     }
-  }, [selectedTerritoryState, user, refreshTerritories]);
+  }, [selectedTerritoryState, tenant, refreshTerritories]);
 
   const handleStyleSave = useCallback(async () => {
-    if (!selectedTerritoryState?.id || !user?.tenantId) return;
+    if (!selectedTerritoryState?.id || !tenant?.id) return;
 
     try {
       const updatedTerritory: Territory = {
@@ -460,7 +487,7 @@ export const Map: React.FC = () => {
         }
       };
 
-      await territoryService.update(user.tenantId, selectedTerritoryState.id, updatedTerritory);
+      await territoryService.update(tenant.id, selectedTerritoryState.id, updatedTerritory);
       setTerritories((prev) =>
         prev.map((t) => (t.id === selectedTerritoryState.id ? updatedTerritory : t))
       );
@@ -470,7 +497,7 @@ export const Map: React.FC = () => {
       console.error('Error updating territory style:', error);
       toast.error('Failed to update territory style');
     }
-  }, [selectedTerritoryState, territoryStyle, user?.tenantId]);
+  }, [selectedTerritoryState, territoryStyle, tenant?.id]);
 
   // Initialize drawing manager when drawing mode changes
   useEffect(() => {
@@ -521,7 +548,7 @@ export const Map: React.FC = () => {
   useEffect(() => {
     refreshTerritories();
     loadTerritoryTypes();
-  }, [refreshTerritories, loadTerritoryTypes, user?.tenantId]);
+  }, [refreshTerritories, loadTerritoryTypes, tenant?.id]);
 
   const onLoad = useCallback((mapInstance: window.google.maps.Map) => {
     setMap(mapInstance);
@@ -543,6 +570,39 @@ export const Map: React.FC = () => {
       });
     }
   }, [selectedTerritoryState]);
+
+  const renderModals = () => {
+    return (
+      <>
+        {showDeleteConfirm && (
+          <ConfirmDialog
+            open={showDeleteConfirm}
+            title="Delete Territory"
+            message="Are you sure you want to delete this territory? This action cannot be undone."
+            onConfirm={handleDeleteConfirm}
+            onCancel={() => setShowDeleteConfirm(false)}
+            inert  // Use inert instead of aria-hidden
+          />
+        )}
+        {showColorPicker && (
+          <div 
+            role="dialog"
+            aria-modal="true"
+            className="color-picker-modal"
+            inert  // Use inert instead of aria-hidden
+          >
+            <ColorPicker
+              color={territoryStyle.fillColor}
+              onChange={(color) =>
+                setTerritoryStyle((prev) => ({ ...prev, fillColor: color }))
+              }
+              onClose={() => setShowColorPicker(false)}
+            />
+          </div>
+        )}
+      </>
+    );
+  };
 
   if (loadError) {
     return <div className="text-red-500">Error loading maps</div>;
@@ -598,12 +658,12 @@ export const Map: React.FC = () => {
           </GoogleMap>
 
           {/* Territory Form */}
-          {showEditor && newTerritory && (
+          {showEditor && (
             <div className="absolute top-4 right-4 z-50 bg-white rounded-lg shadow-lg">
               <TerritoryForm
-                coordinates={newTerritory.boundary.coordinates}
                 onSave={handleSaveTerritory}
                 onClose={handleNewTerritoryClose}
+                territoryStyle={territoryStyle}
               />
             </div>
           )}
@@ -652,79 +712,7 @@ export const Map: React.FC = () => {
             </div>
           )}
 
-          {/* Delete Confirmation Dialog */}
-          <ConfirmDialog
-            isOpen={showDeleteConfirm}
-            title="Delete Territory"
-            message="Are you sure you want to delete this territory? This action cannot be undone."
-            onConfirm={handleDeleteConfirm}
-            onCancel={() => setShowDeleteConfirm(false)}
-          />
-
-          {/* Color Picker Modal */}
-          {showColorPicker && selectedTerritoryState && (
-            <div className="fixed z-50 top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white p-6 rounded-lg shadow-lg min-w-[320px]">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-semibold">Territory Style</h3>
-                <button
-                  onClick={() => setShowColorPicker(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="space-y-6">
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Fill Color</label>
-                  <ColorPicker
-                    color={territoryStyle.fillColor || '#FFFFFF'}
-                    onChange={(color) =>
-                      setTerritoryStyle((prev) => ({ ...prev, fillColor: color }))
-                    }
-                    className="w-full"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-gray-700">Border Color</label>
-                  <ColorPicker
-                    color={territoryStyle.strokeColor || '#000000'}
-                    onChange={(color) =>
-                      setTerritoryStyle((prev) => ({ ...prev, strokeColor: color }))
-                    }
-                    className="w-full"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <label className="block text-sm font-medium text-gray-700">Fill Opacity</label>
-                    <span className="text-sm text-gray-500">
-                      {Math.round((territoryStyle.fillOpacity ?? 0.35) * 100)}%
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={territoryStyle.fillOpacity ?? 0.35}
-                    onChange={(e) =>
-                      setTerritoryStyle((prev) => ({
-                        ...prev,
-                        fillOpacity: parseFloat(e.target.value)
-                      }))
-                    }
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                  />
-                </div>
-                <div className="flex justify-end space-x-2 pt-4">
-                  <Button variant="outline" onClick={() => setShowColorPicker(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleStyleSave}>Save Changes</Button>
-                </div>
-              </div>
-            </div>
-          )}
+          {renderModals()}
         </>
       ) : (
         <LoadingScreen />

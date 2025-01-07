@@ -53,6 +53,7 @@ interface TenantContextType {
   hierarchy: TenantHierarchy;
   loading: boolean;
   error: Error | null;
+  updateTenant: (data: Partial<Tenant>) => Promise<void>;
 }
 
 // Export the context so it can be used by the hook
@@ -60,10 +61,18 @@ export const TenantContext = createContext<TenantContextType>({
   tenant: null,
   hierarchy: {},
   loading: true,
-  error: null
+  error: null,
+  updateTenant: async () => {},
 });
 
-export const useTenant = () => useContext(TenantContext);
+// Export the hook separately for HMR compatibility
+export function useTenant() {
+  const context = useContext(TenantContext);
+  if (!context) {
+    throw new Error('useTenant must be used within a TenantProvider');
+  }
+  return context;
+}
 
 interface TenantProviderProps {
   children: React.ReactNode;
@@ -73,7 +82,7 @@ interface TenantProviderProps {
 const LEGACY_TENANTS = {
   'heavy-machines': {
     reason: 'Employer Organization',
-    plan: 'enterprise' as const
+    plan: 'enterprise' as const,
   },
   'test-tenant': {
     reason: 'Test Environment',
@@ -85,177 +94,118 @@ const LEGACY_TENANTS = {
   }
 };
 
-export const TenantProvider: React.FC<TenantProviderProps> = ({ children }) => {
-  const { user } = useStore();
+// Export the provider component
+export function TenantProvider({ children }: TenantProviderProps) {
+  const { user, tenant: storeTenant, setTenant: setStoreTenant } = useStore();
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [hierarchy, setHierarchy] = useState<TenantHierarchy>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
-  // Load organizational hierarchy
+  console.log('[DEBUG] TenantProvider - Initial render with user:', user?.tenantId);
+
   useEffect(() => {
-    const loadHierarchy = async () => {
-      if (!user?.tenantId) return;
-
-      try {
-        let hierarchyData: TenantHierarchy = {
-          divisionId: user.divisionId,
-          branchId: user.branchId
-        };
-
-        // Load division data if user has a division
-        if (user.divisionId) {
-          const divisionData = await divisionService.getById(user.tenantId, user.divisionId);
-          if (divisionData) {
-            hierarchyData.divisionData = divisionData;
-            const metrics = await divisionService.getMetrics(user.tenantId, user.divisionId);
-            hierarchyData.metrics = metrics;
-          }
-        }
-
-        // Load branch data if user has a branch
-        if (user.branchId) {
-          const branchData = await branchService.getById(user.tenantId, user.branchId);
-          if (branchData) {
-            hierarchyData.branchData = branchData;
-            // If user is branch-level, get branch-specific metrics
-            if (!user.divisionId) {
-              hierarchyData.metrics = {
-                userCount: await branchService.getUserCount(user.tenantId, user.branchId),
-                branchCount: 1,
-                territoryCount: await branchService.getTerritoryCount(user.tenantId, user.branchId)
-              };
-            }
-          }
-        }
-
-        setHierarchy(hierarchyData);
-      } catch (err) {
-        console.error('Error loading hierarchy:', err);
-      }
-    };
-
-    loadHierarchy();
-  }, [user?.tenantId, user?.divisionId, user?.branchId]);
-
-  // Load tenant data
-  useEffect(() => {
-    const loadTenant = async () => {
+    console.log('[DEBUG] TenantProvider - Effect triggered with tenantId:', user?.tenantId);
+    const fetchTenant = async () => {
       if (!user?.tenantId) {
-        console.log('No tenantId found for user, clearing tenant state');
-        setError(new Error('No tenant selected. Please contact your administrator to be assigned to a tenant.'));
+        console.log('[DEBUG] TenantProvider - No tenant ID in user object');
         setTenant(null);
+        setStoreTenant(null);
         setLoading(false);
         return;
       }
 
       try {
-        console.log('Loading tenant data for ID:', user.tenantId);
         setLoading(true);
         setError(null);
 
-        // Get tenant document
+        // Check store first
+        if (storeTenant && storeTenant.id === user.tenantId) {
+          console.log('[DEBUG] TenantProvider - Using cached tenant:', storeTenant.id);
+          setTenant(storeTenant);
+          setLoading(false);
+          return;
+        }
+
+        console.log('[DEBUG] TenantProvider - Fetching tenant:', user.tenantId);
         const tenantRef = doc(db, 'tenants', user.tenantId);
         const tenantDoc = await getDoc(tenantRef);
 
-        if (!tenantDoc.exists()) {
-          console.log('No tenant document found, checking legacy access');
-          // Check if this should be a legacy tenant
-          const legacyAccess = LEGACY_TENANTS[user.tenantId];
-          
-          if (!legacyAccess) {
-            console.error('No tenant document or legacy access found');
-            setError(new Error('Tenant not found. Please contact your administrator.'));
-            setTenant(null);
-            return;
-          }
-
-          // Create new tenant with appropriate billing type
-          const newTenantData: Tenant = {
-            id: user.tenantId,
-            name: legacyAccess ? 'Legacy Enterprise Tenant' : 'New Tenant',
-            billing: legacyAccess ? {
-              type: 'legacy',
-              legacyAccess: {
-                reason: legacyAccess.reason,
-                plan: legacyAccess.plan
-              }
-            } : {
-              type: 'stripe'
-            },
-            subscription: legacyAccess ? {
-              plan: legacyAccess.plan,
-              status: 'active',
-              currentPeriodEnd: '2099-12-31T23:59:59.999Z'
-            } : undefined,
-            features: legacyAccess ? {
-              enableAdvancedMapping: true,
-              enableAnalytics: true,
-              enableCustomBoundaries: true,
-              enableTeamManagement: true,
-              enableApiAccess: true
-            } : {
-              enableAdvancedMapping: false,
-              enableAnalytics: false,
-              enableCustomBoundaries: false,
-              enableTeamManagement: false,
-              enableApiAccess: false
-            },
-            lastUpdated: new Date().toISOString()
-          };
-          
-          console.log('Creating new tenant document:', newTenantData);
-          await setDoc(tenantRef, newTenantData);
-          setTenant(newTenantData);
-        } else {
-          console.log('Tenant document found:', tenantDoc.data());
+        if (tenantDoc.exists()) {
+          // Handle legacy tenants
+          const isLegacy = LEGACY_TENANTS[user.tenantId as keyof typeof LEGACY_TENANTS];
           const tenantData = {
             id: tenantDoc.id,
-            ...tenantDoc.data()
+            ...tenantDoc.data(),
+            billing: {
+              type: isLegacy ? 'legacy' : 'stripe',
+              legacyAccess: isLegacy,
+            },
           } as Tenant;
+
+          console.log('[DEBUG] TenantProvider - Tenant found:', tenantData.id);
           setTenant(tenantData);
+          setStoreTenant(tenantData);
+
+          // Fetch hierarchy data
+          const [divisionData, branchData] = await Promise.all([
+            user.divisionId ? divisionService.getDivision(user.divisionId) : null,
+            user.branchId ? branchService.getBranch(user.branchId) : null,
+          ]);
+
+          setHierarchy({
+            divisionId: user.divisionId,
+            branchId: user.branchId,
+            divisionData,
+            branchData,
+          });
+        } else {
+          console.log('[DEBUG] TenantProvider - Tenant not found');
+          throw new Error('Tenant not found');
         }
       } catch (err) {
-        console.error('Error loading tenant:', err);
-        setError(err as Error);
+        console.error('[DEBUG] TenantProvider - Error:', err);
+        setError(err instanceof Error ? err : new Error('Failed to fetch tenant'));
         setTenant(null);
+        setStoreTenant(null);
       } finally {
         setLoading(false);
       }
     };
 
-    loadTenant();
-  }, [user?.tenantId]);
+    fetchTenant();
+  }, [user?.tenantId, user?.divisionId, user?.branchId, storeTenant, setStoreTenant]);
 
-  // Update counts periodically
-  useEffect(() => {
+  const updateTenant = async (data: Partial<Tenant>) => {
     if (!tenant?.id) return;
 
-    const updateCounts = async () => {
-      try {
-        await adminService.updateTenantCounts(tenant.id);
-        const updatedDoc = await getDoc(doc(db, 'tenants', tenant.id));
-        const updatedData = {
-          id: updatedDoc.id,
-          ...updatedDoc.data()
-        } as Tenant;
-        setTenant(updatedData);
-      } catch (err) {
-        console.error('Error updating tenant counts:', err);
-      }
-    };
+    try {
+      const tenantRef = doc(db, 'tenants', tenant.id);
+      await setDoc(tenantRef, data, { merge: true });
+      const updatedTenant = { ...tenant, ...data };
+      setTenant(updatedTenant);
+      setStoreTenant(updatedTenant);
+    } catch (error) {
+      console.error('[DEBUG] TenantProvider - Error updating tenant:', error);
+      throw error;
+    }
+  };
 
-    const interval = setInterval(updateCounts, 5 * 60 * 1000); // Update every 5 minutes
-    return () => clearInterval(interval);
-  }, [tenant?.id]);
+  const value = {
+    tenant,
+    hierarchy,
+    loading,
+    error,
+    updateTenant,
+  };
 
-  const contextValue = { tenant, hierarchy, loading, error };
+  console.log('[DEBUG] TenantProvider - Rendering with tenant:', tenant?.id);
 
   return (
-    <TenantContext.Provider value={contextValue}>
+    <TenantContext.Provider value={value}>
       {children}
     </TenantContext.Provider>
   );
-};
+}
 
 export default TenantProvider;

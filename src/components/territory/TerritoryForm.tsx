@@ -17,15 +17,15 @@ import { territoryTypeService, TerritoryTypeDefinition } from '../../services/te
 import { X } from 'lucide-react';
 import { useToast } from '../ui/use-toast';
 import { useAuth } from '../../hooks/useAuth';
-import { TerritoryType, TerritoryPoint, NewTerritory } from '../../types/territory';
+import { TerritoryType, TerritoryPoint, NewTerritory, TerritoryStyle } from '../../types/territory';
 import { useTenant } from '../../contexts/TenantContext';
 import { Timestamp } from 'firebase/firestore';
 
 interface TerritoryFormProps {
-  coordinates: TerritoryPoint[];
   onSave: (formData: NewTerritory) => Promise<void>;
   onClose: () => void;
   onSuccess?: () => void;
+  territoryStyle?: TerritoryStyle;
 }
 
 interface TerritoryFormData {
@@ -51,10 +51,10 @@ interface Representative {
 }
 
 const TerritoryForm: React.FC<TerritoryFormProps> = ({
-  coordinates,
   onSave,
   onClose,
   onSuccess,
+  territoryStyle,
 }) => {
   const { user } = useAuth();
   const { tenant } = useTenant();
@@ -69,51 +69,89 @@ const TerritoryForm: React.FC<TerritoryFormProps> = ({
   const [territoryTypes, setTerritoryTypes] = useState<TerritoryTypeDefinition[]>([]);
 
   useEffect(() => {
-    if (tenant?.id) {
-      loadData();
-    }
-  }, [tenant?.id]);
+    const loadData = async () => {
+      if (!tenant?.id) {
+        console.log('No tenant ID available');
+        setTerritoryTypes([]);
+        setBranches([]);
+        return;
+      }
+
+      try {
+        console.log('Loading data for tenant:', tenant.id);
+        setLoading(true);
+        
+        // Load territory types first
+        const typesData = await territoryTypeService.getAll(tenant.id);
+        console.log('Loaded territory types:', typesData);
+
+        // Remove any duplicate types by code
+        const uniqueTypes = Array.from(
+          new Map(typesData.map(type => [type.code, type])).values()
+        );
+
+        // Sort territory types: categories first, then system types, then others
+        const sortedTypes = uniqueTypes.sort((a, b) => {
+          if (a.isCategory && !b.isCategory) return -1;
+          if (!a.isCategory && b.isCategory) return 1;
+          if (a.isSystem && !b.isSystem) return -1;
+          if (!a.isSystem && b.isSystem) return 1;
+          return a.name.localeCompare(b.name);
+        });
+
+        setTerritoryTypes(sortedTypes);
+
+        // Then load branches
+        const branchesData = await branchService.getAll(tenant.id);
+        console.log('Loaded branches:', branchesData);
+
+        // Remove any duplicate branches by id
+        const uniqueBranches = Array.from(
+          new Map(branchesData.map(branch => [branch.id, branch])).values()
+        );
+        setBranches(uniqueBranches);
+
+      } catch (error) {
+        console.error('Error loading form data:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load territory types. Please try refreshing the page.',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, [tenant?.id, toast]);
 
   useEffect(() => {
-    if (tenant?.id && formData.type === 'representative' && formData.branchId) {
-      loadRepresentatives(formData.branchId);
-    } else {
-      setRepresentatives([]);
-    }
-  }, [tenant?.id, formData.type, formData.branchId]);
+    const loadRepresentatives = async () => {
+      if (!tenant?.id || formData.type !== 'representative' || !formData.branchId) {
+        setRepresentatives([]);
+        return;
+      }
 
-  const loadData = async () => {
-    try {
-      const [branchesData, typesData] = await Promise.all([
-        branchService.getAll(tenant!.id),
-        territoryTypeService.getAll(tenant!.id),
-      ]);
+      try {
+        const repsData = await representativeService.getRepresentativesByBranch(tenant.id, formData.branchId);
+        // Remove any duplicate representatives by id
+        const uniqueReps = Array.from(
+          new Map(repsData.map(rep => [rep.id, rep])).values()
+        );
+        setRepresentatives(uniqueReps);
+      } catch (error) {
+        console.error('Error loading representatives:', error);
+        toast({
+          title: 'Error',
+          description: 'Failed to load representatives',
+          variant: 'destructive',
+        });
+      }
+    };
 
-      setBranches(branchesData);
-      setTerritoryTypes(typesData);
-    } catch (error) {
-      console.error('Error loading form data:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load form data',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  const loadRepresentatives = async (branchId: string) => {
-    try {
-      const repsData = await representativeService.getRepresentativesByBranch(tenant!.id, branchId);
-      setRepresentatives(repsData);
-    } catch (error) {
-      console.error('Error loading representatives:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load representatives',
-        variant: 'destructive',
-      });
-    }
-  };
+    loadRepresentatives();
+  }, [tenant?.id, formData.type, formData.branchId, toast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -125,7 +163,18 @@ const TerritoryForm: React.FC<TerritoryFormProps> = ({
       
       const territory: NewTerritory = {
         ...formData,
-        coordinates,
+        code: `${formData.type}-${Date.now()}`, // Generate a unique code
+        boundary: {
+          type: 'Polygon',
+          coordinates: [],
+          style: {
+            strokeColor: selectedType?.color || '#2563EB',
+            strokeOpacity: 1,
+            strokeWeight: 2,
+            fillColor: selectedType?.color || '#3B82F6',
+            fillOpacity: 0.35
+          }
+        },
         createdBy: user?.uid || '',
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
@@ -156,6 +205,68 @@ const TerritoryForm: React.FC<TerritoryFormProps> = ({
     }
   };
 
+  const renderTerritoryTypes = () => {
+    if (loading) {
+      return <div>Loading territory types...</div>;
+    }
+
+    if (territoryTypes.length === 0) {
+      return <div>No territory types available</div>;
+    }
+
+    return (
+      <Select
+        value={formData.type}
+        onValueChange={(value) => setFormData({ ...formData, type: value })}
+      >
+        <SelectTrigger>
+          <SelectValue placeholder="Select type" />
+        </SelectTrigger>
+        <SelectContent>
+          {/* Categories */}
+          {territoryTypes.filter(type => type.isCategory).map(category => (
+            <SelectGroup key={`category-${category.code}`}>
+              <SelectLabel>{category.name}</SelectLabel>
+              {territoryTypes
+                .filter(type => type.parentType === category.code)
+                .map(type => (
+                  <SelectItem key={`type-${type.code}`} value={type.code}>
+                    {type.name}
+                  </SelectItem>
+                ))}
+            </SelectGroup>
+          ))}
+
+          {/* System Types */}
+          <SelectGroup key="system-types">
+            <SelectLabel>System Types</SelectLabel>
+            {territoryTypes
+              .filter(type => type.isSystem && !type.isCategory)
+              .map(type => (
+                <SelectItem key={`system-${type.code}`} value={type.code}>
+                  {type.name}
+                </SelectItem>
+              ))}
+          </SelectGroup>
+
+          {/* Other Types */}
+          {territoryTypes.filter(type => !type.isSystem && !type.isCategory && !type.parentType).length > 0 && (
+            <SelectGroup key="other-types">
+              <SelectLabel>Other Types</SelectLabel>
+              {territoryTypes
+                .filter(type => !type.isSystem && !type.isCategory && !type.parentType)
+                .map(type => (
+                  <SelectItem key={`other-${type.code}`} value={type.code}>
+                    {type.name}
+                  </SelectItem>
+                ))}
+            </SelectGroup>
+          )}
+        </SelectContent>
+      </Select>
+    );
+  };
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-2">
@@ -170,84 +281,7 @@ const TerritoryForm: React.FC<TerritoryFormProps> = ({
 
       <div className="space-y-2">
         <Label htmlFor="type">Territory Type</Label>
-        <Select
-          value={formData.type}
-          onValueChange={(value) => setFormData({ ...formData, type: value })}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Select type" />
-          </SelectTrigger>
-          <SelectContent>
-            {/* System Types */}
-            <SelectGroup>
-              <SelectLabel>System Types</SelectLabel>
-              {territoryTypes
-                .filter(type => type.isSystem)
-                .filter((type, index, self) => 
-                  index === self.findIndex(t => t.code === type.code)
-                )
-                .map(type => (
-                  <SelectItem
-                    key={`system-${type.code}`}
-                    value={type.code}
-                  >
-                    {type.name}
-                  </SelectItem>
-                ))}
-            </SelectGroup>
-
-            {/* Category Types and their children */}
-            {territoryTypes
-              .filter(type => type.isCategory && !type.isSystem)
-              .filter((type, index, self) => 
-                index === self.findIndex(t => t.code === type.code)
-              )
-              .map(category => (
-                <SelectGroup key={`category-${category.code}`}>
-                  <SelectLabel>{category.name}</SelectLabel>
-                  {territoryTypes
-                    .filter(type => type.parentType === category.code)
-                    .filter((type, index, self) => 
-                      index === self.findIndex(t => t.code === type.code)
-                    )
-                    .map(type => (
-                      <SelectItem
-                        key={`child-${type.code}`}
-                        value={type.code}
-                        className="pl-6"
-                      >
-                        {type.name}
-                      </SelectItem>
-                    ))}
-                </SelectGroup>
-              ))}
-
-            {/* Standalone Types */}
-            {territoryTypes
-              .filter(type => !type.isSystem && !type.isCategory && !type.parentType)
-              .filter((type, index, self) => 
-                index === self.findIndex(t => t.code === type.code)
-              )
-              .length > 0 && (
-              <SelectGroup>
-                <SelectLabel>Other Types</SelectLabel>
-                {territoryTypes
-                  .filter(type => !type.isSystem && !type.isCategory && !type.parentType)
-                  .filter((type, index, self) => 
-                    index === self.findIndex(t => t.code === type.code)
-                  )
-                  .map(type => (
-                    <SelectItem
-                      key={`standalone-${type.code}`}
-                      value={type.code}
-                    >
-                      {type.name}
-                    </SelectItem>
-                  ))}
-              </SelectGroup>
-            )}
-          </SelectContent>
-        </Select>
+        {renderTerritoryTypes()}
       </div>
 
       {/* Conditional Fields based on Type */}
@@ -263,7 +297,7 @@ const TerritoryForm: React.FC<TerritoryFormProps> = ({
             </SelectTrigger>
             <SelectContent>
               {branches.map((branch) => (
-                <SelectItem key={branch.id} value={branch.id}>
+                <SelectItem key={`branch-${branch.id}`} value={branch.id}>
                   {branch.name}
                 </SelectItem>
               ))}
@@ -291,7 +325,7 @@ const TerritoryForm: React.FC<TerritoryFormProps> = ({
               </SelectTrigger>
               <SelectContent>
                 {branches.map((branch) => (
-                  <SelectItem key={branch.id} value={branch.id}>
+                  <SelectItem key={`branch-${branch.id}`} value={branch.id}>
                     {branch.name}
                   </SelectItem>
                 ))}
@@ -312,7 +346,7 @@ const TerritoryForm: React.FC<TerritoryFormProps> = ({
                 </SelectTrigger>
                 <SelectContent>
                   {representatives.map((rep) => (
-                    <SelectItem key={rep.id} value={rep.id}>
+                    <SelectItem key={`rep-${rep.id}`} value={rep.id}>
                       {rep.name}
                     </SelectItem>
                   ))}

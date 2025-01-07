@@ -79,18 +79,22 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   // Fetch data layers when tenant changes
   useEffect(() => {
     async function fetchDataLayers() {
-      if (!tenant?.id) return;
+      if (!tenant?.id) {
+        setDataLayers([]); // Clear data layers if no tenant
+        return;
+      }
 
       try {
         const layers = await getDataLayers(tenant.id);
         setDataLayers(layers);
       } catch (error) {
         console.error('Error fetching data layers:', error);
+        setDataLayers([]); // Reset on error
       }
     }
 
     fetchDataLayers();
-  }, [tenant]);
+  }, [tenant?.id]);
 
   const setTerritoryTypeVisibility = (typeCode: string, visible: boolean) => {
     setTerritoryTypeVisibilityState(prev => ({

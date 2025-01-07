@@ -9,6 +9,7 @@ interface TerritoryDrawingLayerProps {
 }
 
 export function TerritoryDrawingLayer({ map, isDrawing, onComplete, onCancel }: TerritoryDrawingLayerProps) {
+  const { tenant, loading: tenantLoading } = useTenant();
   const [points, setPoints] = useState<TerritoryPoint[]>([]);
   const polylineRef = useRef<google.maps.Polyline | null>(null);
   const previewLineRef = useRef<google.maps.Polyline | null>(null);
@@ -16,9 +17,18 @@ export function TerritoryDrawingLayer({ map, isDrawing, onComplete, onCancel }: 
   const clickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
   const mouseMoveListenerRef = useRef<google.maps.MapsEventListener | null>(null);
 
+  // Don't allow drawing if tenant is not loaded
+  useEffect(() => {
+    if (tenantLoading || !tenant) {
+      cleanup();
+      onCancel();
+      return;
+    }
+  }, [tenant, tenantLoading, onCancel]);
+
   // Initialize drawing mode
   useEffect(() => {
-    if (!map || !isDrawing) {
+    if (!map || !isDrawing || !tenant) {
       cleanup();
       return;
     }
@@ -63,7 +73,7 @@ export function TerritoryDrawingLayer({ map, isDrawing, onComplete, onCancel }: 
     mouseMoveListenerRef.current = mouseMoveListener;
 
     return cleanup;
-  }, [map, isDrawing]);
+  }, [map, isDrawing, tenant]);
 
   const handleMouseMove = (e: google.maps.MapMouseEvent) => {
     if (!e.latLng || !previewLineRef.current || points.length === 0) return;

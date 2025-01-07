@@ -44,7 +44,10 @@ export default function TerritoryManagementNew() {
 
   useEffect(() => {
     const initializeTypes = async () => {
-      if (!tenant?.id) return;
+      if (!tenant?.id) {
+        setTerritoryTypes([]); // Clear territory types if no tenant
+        return;
+      }
       
       try {
         await territoryTypeService.initializeDefaultTypes(tenant.id);
@@ -61,16 +64,17 @@ export default function TerritoryManagementNew() {
         setTerritoryTypes(uniqueTypes);
       } catch (error) {
         console.error('Error initializing territory types:', error);
+        setTerritoryTypes([]); // Reset on error
         toast({
           title: 'Error',
-          description: 'Failed to initialize territory types',
+          description: 'Failed to initialize territory types. Please ensure you are logged in with proper permissions.',
           variant: 'destructive',
         });
       }
     };
 
     initializeTypes();
-  }, [tenant?.id]);
+  }, [tenant?.id, toast]);
 
   const loadTerritoryTypes = async () => {
     if (!tenant?.id) return;

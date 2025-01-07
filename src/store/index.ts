@@ -101,77 +101,47 @@ export const useStore = create<StoreState>()(
                     }
                   };
 
-                  // Load tenant data
+                  // Set user in store
+                  set({ user: appUser });
+
+                  // If user has a tenant ID, fetch tenant data
                   if (appUser.tenantId) {
-                    const tenantDocRef = doc(db, 'tenants', appUser.tenantId);
-                    const tenantDoc = await getDoc(tenantDocRef);
-                    if (tenantDoc.exists()) {
-                      const tenantData = tenantDoc.data();
-                      set({ tenant: { id: appUser.tenantId, ...tenantData } });
+                    try {
+                      const tenantRef = doc(db, 'tenants', appUser.tenantId);
+                      const tenantDoc = await getDoc(tenantRef);
+                      
+                      if (tenantDoc.exists()) {
+                        const tenantData = { id: tenantDoc.id, ...tenantDoc.data() } as Tenant;
+                        set({ tenant: tenantData });
+                      }
+                    } catch (error) {
+                      console.error('Error fetching tenant data:', error);
+                      set({ tenant: null });
                     }
                   }
-                  
-                  set({ user: appUser, loading: { ...get().loading, auth: false } });
-                  console.log('User state updated:', appUser);
+
                   resolve(appUser);
                 } else {
-                  console.log('No user document found, creating one');
-                  // Get tenant from email domain
-                  const emailDomain = user.email?.split('@')[1] || '';
-                  let tenantId = '';
-                  
-                  // Try to find matching tenant
-                  if (emailDomain) {
-                    const tenantsRef = collection(db, 'tenants');
-                    const tenantsQuery = query(tenantsRef, where('domains', 'array-contains', emailDomain));
-                    const tenantsSnapshot = await getDocs(tenantsQuery);
-                    
-                    if (!tenantsSnapshot.empty) {
-                      tenantId = tenantsSnapshot.docs[0].id;
-                    }
-                  }
-
-                  const newUserData = {
-                    displayName: user.displayName || '',
-                    email: user.email || '',
-                    photoURL: user.photoURL || '',
-                    tenantId: tenantId,
-                    organizationRoles: ['user'],
-                    platformRole: 'user',
-                    metadata: {
-                      createdAt: new Date(),
-                      updatedAt: new Date(),
-                      status: 'active'
-                    }
-                  };
-                  
-                  await setDoc(userDocRef, newUserData);
-                  const appUser = { id: user.uid, ...newUserData };
-
-                  // Load tenant data if we found one
-                  if (tenantId) {
-                    const tenantDocRef = doc(db, 'tenants', tenantId);
-                    const tenantDoc = await getDoc(tenantDocRef);
-                    if (tenantDoc.exists()) {
-                      const tenantData = tenantDoc.data();
-                      set({ tenant: { id: tenantId, ...tenantData } });
-                    }
-                  }
-
-                  set({ user: appUser, loading: { ...get().loading, auth: false } });
-                  resolve(appUser);
+                  console.log('No user document found');
+                  set({ user: null, tenant: null });
+                  resolve(null);
                 }
               } catch (error) {
-                console.error('Error in auth initialization:', error);
-                set({ user: null, loading: { ...get().loading, auth: false } });
+                console.error('Error fetching user profile:', error);
+                set({ user: null, tenant: null });
                 resolve(null);
+              } finally {
+                set(state => ({ loading: { ...state.loading, auth: false } }));
               }
             } else {
-              console.log('No user found in auth state');
-              set({ user: null, loading: { ...get().loading, auth: false } });
+              console.log('No authenticated user');
+              set({ user: null, tenant: null, loading: { ...get().loading, auth: false } });
               resolve(null);
             }
           });
+
+          // Cleanup subscription on unmount
+          return () => unsubscribe();
         });
       },
       
