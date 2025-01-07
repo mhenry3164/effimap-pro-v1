@@ -12,6 +12,7 @@
     "prebuild": "npm run clean"
   },
   "dependencies": {
+    "@ant-design/icons": "^5.5.2",
     "@deck.gl/core": "^9.0.36",
     "@deck.gl/google-maps": "^9.0.36",
     "@deck.gl/layers": "^9.0.36",
@@ -35,7 +36,10 @@
     "@react-google-maps/api": "^2.19.3",
     "@stripe/stripe-js": "^3.0.7",
     "@turf/turf": "^6.5.0",
+    "@types/uuid": "^10.0.0",
+    "antd": "^5.23.0",
     "axios": "^1.7.7",
+    "comlink": "^4.4.2",
     "date-fns": "^3.3.1",
     "dotenv": "^16.4.5",
     "firebase": "^10.8.0",
@@ -58,6 +62,7 @@
     "react-router-dom": "^6.22.3",
     "simplify-geojson": "^1.0.5",
     "stripe": "^14.20.0",
+    "uuid": "^11.0.4",
     "zustand": "^4.5.2"
   },
   "devDependencies": {

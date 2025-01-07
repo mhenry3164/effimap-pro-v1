@@ -1,7 +1,7 @@
 import * as React from "react"
 import { useLocation } from "react-router-dom"
 import { Switch } from "../ui/switch"
-import { Layers, ChevronRight, Pencil, Target, Flame } from "lucide-react"
+import { Layers, ChevronRight, Pencil, Target, Flame, Database } from "lucide-react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible"
 import { useMap } from "../../contexts/MapContext"
 import { Button } from "../ui/button"
@@ -22,6 +22,8 @@ export function MapControls() {
     isDrawingMode,
     territoryTypeVisibility,
     territoryTypes,
+    dataLayers,
+    toggleDataLayerVisibility,
     setStateLayerVisible,
     setCountyLayerVisible,
     setZipLayerVisible,
@@ -220,6 +222,40 @@ export function MapControls() {
                   </div>
                 </div>
               ))}
+          </CollapsibleContent>
+        </Collapsible>
+
+        {/* Data Layers Section */}
+        <Collapsible
+          open={isAdvancedOpen}
+          onOpenChange={setIsAdvancedOpen}
+          className="space-y-2"
+        >
+          <CollapsibleTrigger className="flex w-full items-center justify-between rounded-lg border px-4 py-2 font-medium hover:bg-accent hover:text-accent-foreground">
+            <div className="flex items-center space-x-2">
+              <Database className="h-4 w-4" />
+              <span>Data Layers</span>
+            </div>
+            <ChevronRight
+              className={cn(
+                "h-4 w-4 transition-transform duration-200",
+                isAdvancedOpen && "rotate-90"
+              )}
+            />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-2">
+            {dataLayers.map((layer) => (
+              <div
+                key={layer.id}
+                className="flex items-center justify-between rounded-lg border px-4 py-2"
+              >
+                <span className="text-sm">{layer.name}</span>
+                <Switch
+                  checked={layer.visible}
+                  onCheckedChange={() => toggleDataLayerVisibility(layer.id)}
+                />
+              </div>
+            ))}
           </CollapsibleContent>
         </Collapsible>
 

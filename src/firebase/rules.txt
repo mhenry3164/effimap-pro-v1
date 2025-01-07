@@ -1,7 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Enhanced helper functions
+    // Helper functions
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -16,166 +16,30 @@ service cloud.firestore {
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.platformRole == 'supportAdmin';
     }
     
-    function belongsToOrganization(orgId) {
-      return isAuthenticated() && 
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.organizationId == orgId;
+    // Basic collections
+    match /activities/{activityId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
     }
     
-    // Enhanced tenant validation
-    function isValidTenant(orgId) {
-      let org = get(/databases/$(database)/documents/organizations/$(orgId));
-      return org.exists && 
-             org.data.status == 'active' && 
-             org.data.subscription.status == 'active' &&
-             org.data.subscription.expiresAt > request.time;
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isPlatformAdmin();
     }
     
-    // Enhanced role checking with hierarchy
-    function hasRole(orgId, role) {
-      let user = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      let roles = user.data.organizationRoles;
-      
-      // Define role hierarchy
-      let roleHierarchy = {
-        'orgAdmin': ['divisionAdmin', 'branchAdmin', 'territoryManager'],
-        'divisionAdmin': ['branchAdmin', 'territoryManager'],
-        'branchAdmin': ['territoryManager']
-      };
-      
-      // Check if user has the role or any superior role
-      return belongsToOrganization(orgId) && (
-        roles.hasAny([role]) || 
-        roles.hasAny(getRoleSuperiors(role))
-      );
-    }
-    
-    function getRoleSuperiors(role) {
-      return Object.keys(roleHierarchy).filter(r => 
-        roleHierarchy[r].indexOf(role) >= 0
-      );
-    }
-    
-    // Enhanced feature flag checking with caching
-    function hasFeatureEnabled(orgId, feature) {
-      let featuresDoc = get(/databases/$(database)/documents/organizations/$(orgId)/features/config);
-      return featuresDoc.data[feature] == true;
-    }
-    
-    // Enhanced permission checking with wildcards
-    function hasPermission(orgId, permission) {
-      let user = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      let permissions = user.data.permissions || [];
-      
-      // Check for wildcard permission
-      if (permissions.hasAny(['*'])) return true;
-      
-      // Check for specific permission
-      if (permissions.hasAny([permission])) return true;
-      
-      // Check for wildcard resource permission
-      let [resource, action] = permission.split('.');
-      return permissions.hasAny([resource + '.*']);
-    }
-    
-    // Rate limiting helper
-    function isWithinRateLimit(orgId) {
-      let limit = get(/databases/$(database)/documents/organizations/$(orgId)/settings/api).data.rateLimit;
-      let requests = getRecentRequests(orgId);
-      return requests.size() < limit;
-    }
-    
-    function getRecentRequests(orgId) {
-      let threshold = request.time - duration.value(1, 'h');
-      return getAll(/databases/$(database)/documents/organizations/$(orgId)/apiRequests)
-        .filter(r => r.data.timestamp > threshold);
-    }
-    
-    // Platform-level collections
-    match /organizations/{orgId} {
-      allow read: if belongsToOrganization(orgId) || isPlatformAdmin() || isSupportAdmin();
+    // Tenant structure
+    match /tenants/{tenantId} {
+      allow read: if isAuthenticated();
       allow write: if isPlatformAdmin();
       
-      // Organization-scoped collections with enhanced security
-      match /users/{userId} {
-        allow read: if belongsToOrganization(orgId) && isValidTenant(orgId);
-        allow create: if (hasRole(orgId, 'orgAdmin') || isPlatformAdmin()) && 
-                        isValidTenant(orgId) && 
-                        isWithinUserLimit(orgId);
-        allow update: if (hasRole(orgId, 'orgAdmin') || isPlatformAdmin()) && 
-                        isValidTenant(orgId);
-        allow delete: if (hasRole(orgId, 'orgAdmin') || isPlatformAdmin()) && 
-                        isValidTenant(orgId);
-      }
-      
-      match /divisions/{divisionId} {
-        allow read: if belongsToOrganization(orgId) && isValidTenant(orgId);
-        allow write: if hasPermission(orgId, 'division.write') && 
-                       isValidTenant(orgId);
-      }
-      
-      match /branches/{branchId} {
-        allow read: if belongsToOrganization(orgId) && isValidTenant(orgId);
-        allow write: if hasPermission(orgId, 'branch.write') && 
-                       isValidTenant(orgId);
-      }
-      
-      match /territories/{territoryId} {
-        allow read: if belongsToOrganization(orgId) && isValidTenant(orgId);
-        allow create, update: if hasPermission(orgId, 'territory.write') && 
-                               isValidTenant(orgId);
-        allow delete: if hasPermission(orgId, 'territory.delete') && 
-                        isValidTenant(orgId);
-        
-        // Advanced features with feature flags
-        match /analytics/{docId} {
-          allow read, write: if hasFeatureEnabled(orgId, 'enableAdvancedMapping') && 
-                               isValidTenant(orgId) &&
-                               hasPermission(orgId, 'territory.analytics');
-        }
-      }
-      
-      // Audit logs with enhanced immutability
-      match /activities/{activityId} {
-        allow read: if belongsToOrganization(orgId) && 
-                      isValidTenant(orgId) && 
-                      hasPermission(orgId, 'audit.read');
-        allow create: if belongsToOrganization(orgId) && 
-                        isValidTenant(orgId) &&
-                        validateAuditLog();
-        allow update, delete: false;
-      }
-      
-      // API request tracking
-      match /apiRequests/{requestId} {
-        allow read: if belongsToOrganization(orgId) && 
-                      isValidTenant(orgId) && 
-                      hasFeatureEnabled(orgId, 'enableApiAccess');
-        allow create: if belongsToOrganization(orgId) && 
-                        isValidTenant(orgId) && 
-                        hasFeatureEnabled(orgId, 'enableApiAccess') &&
-                        isWithinRateLimit(orgId);
-        allow update, delete: false;
-      }
-      
-      // Ensure proper audit log structure
-      function validateAuditLog() {
-        let requiredFields = ['timestamp', 'action', 'userId', 'details'];
-        return request.resource.data.keys().hasAll(requiredFields) &&
-               request.resource.data.timestamp == request.time;
-      }
-      
-      // Check user limits based on subscription
-      function isWithinUserLimit(orgId) {
-        let org = get(/databases/$(database)/documents/organizations/$(orgId));
-        let currentUsers = get(/databases/$(database)/documents/organizations/$(orgId)/users).size();
-        return currentUsers < org.data.subscription.userLimit;
+      match /heavy-machines/{machineId} {
+        allow read, write: if isAuthenticated();
       }
     }
     
-    // Platform settings with enhanced admin controls
-    match /platformSettings/{settingId} {
-      allow read: if isPlatformAdmin() || isSupportAdmin();
-      allow write: if isPlatformAdmin();
+    // Allow authenticated users to read and write to test-tenant
+    match /tenants/test-tenant/{document=**} {
+      allow read, write: if isAuthenticated();
     }
   }
 }

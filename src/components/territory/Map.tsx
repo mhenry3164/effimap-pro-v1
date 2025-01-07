@@ -18,6 +18,7 @@ import { ConfirmDialog } from '../common/ConfirmDialog';
 import { ColorPicker } from '../ui/color-picker';
 import { TerritoryForm } from './TerritoryForm';
 import { HeatMapLayer } from '../map/HeatMapLayer';
+import { DataLayer } from '../map/DataLayer';
 import { 
   Territory, 
   TerritoryPoint, 
@@ -65,7 +66,8 @@ export const Map: React.FC = () => {
     setIsDrawingMode,
     heatMapLayerVisible,
     heatMapData,
-    setTerritoryTypes
+    setTerritoryTypes,
+    dataLayers 
   } = useMap();
 
   // Initialize state
@@ -568,6 +570,9 @@ export const Map: React.FC = () => {
           >
             {map && (
               <>
+                {dataLayers.map(layer => (
+                  <DataLayer key={layer.id} layer={layer} />
+                ))}
                 <TerritoryLayer
                   key={`territory-layer`}
                   map={map}

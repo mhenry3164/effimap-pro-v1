@@ -1,10 +1,12 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { TerritoryTypeDefinition } from '../services/territoryTypeService';
 import { HeatMapDataset } from '../types/heatMap';
 import { heatMapService } from '../services/heatMapService';
 import { useTenant } from '../hooks/useTenant';
 import { gradientOptions } from '../constants/heatmapConstants';
 import { DEFAULT_HEATMAP_CONTROLS } from '../constants/heatmapEnhanced';
+import { DataLayer, DataLayerConfig, DataLayerStatus } from '../services/dataLayerService';
+import { getDataLayers } from '../services/dataLayerService';
 
 interface HeatMapLayerSettings {
   visible: boolean;
@@ -31,6 +33,8 @@ interface MapContextType {
   territoryTypeVisibility: { [key: string]: boolean };
   heatMapDatasets: HeatMapDataset[];
   activeHeatMapLayers: ActiveHeatMapLayer[];
+  dataLayers: DataLayer[];
+  activeDataLayerId: string | null;
   setStateLayerVisible: (visible: boolean) => void;
   setCountyLayerVisible: (visible: boolean) => void;
   setZipLayerVisible: (visible: boolean) => void;
@@ -45,6 +49,12 @@ interface MapContextType {
   updateHeatMapLayerSettings: (datasetId: string, settings: Partial<HeatMapLayerSettings>) => void;
   addHeatMapLayer: (dataset: HeatMapDataset) => void;
   removeHeatMapLayer: (datasetId: string) => void;
+  setDataLayers: (layers: DataLayer[]) => void;
+  addDataLayer: (layer: DataLayer) => void;
+  updateDataLayer: (id: string, updates: Partial<DataLayer>) => void;
+  removeDataLayer: (id: string) => void;
+  setActiveDataLayer: (id: string | null) => void;
+  toggleDataLayerVisibility: (id: string) => void;
 }
 
 const MapContext = createContext<MapContextType | undefined>(undefined);
@@ -61,8 +71,26 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   const [territoryTypeVisibility, setTerritoryTypeVisibilityState] = useState<{ [key: string]: boolean }>({});
   const [heatMapDatasets, setHeatMapDatasets] = useState<HeatMapDataset[]>([]);
   const [activeHeatMapLayers, setActiveHeatMapLayers] = useState<ActiveHeatMapLayer[]>([]);
+  const [dataLayers, setDataLayers] = useState<DataLayer[]>([]);
+  const [activeDataLayerId, setActiveDataLayerId] = useState<string | null>(null);
 
   const { tenant } = useTenant();
+
+  // Fetch data layers when tenant changes
+  useEffect(() => {
+    async function fetchDataLayers() {
+      if (!tenant?.id) return;
+
+      try {
+        const layers = await getDataLayers(tenant.id);
+        setDataLayers(layers);
+      } catch (error) {
+        console.error('Error fetching data layers:', error);
+      }
+    }
+
+    fetchDataLayers();
+  }, [tenant]);
 
   const setTerritoryTypeVisibility = (typeCode: string, visible: boolean) => {
     setTerritoryTypeVisibilityState(prev => ({
@@ -121,6 +149,26 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     setActiveHeatMapLayers(prev => prev.filter(layer => layer.dataset.id !== datasetId));
   };
 
+  const addDataLayer = useCallback((layer: DataLayer) => {
+    setDataLayers(prev => [...prev, layer]);
+  }, []);
+
+  const updateDataLayer = useCallback((id: string, updates: Partial<DataLayer>) => {
+    setDataLayers(prev => prev.map(layer => 
+      layer.id === id ? { ...layer, ...updates } : layer
+    ));
+  }, []);
+
+  const removeDataLayer = useCallback((id: string) => {
+    setDataLayers(prev => prev.filter(layer => layer.id !== id));
+  }, []);
+
+  const toggleDataLayerVisibility = useCallback((id: string) => {
+    setDataLayers(prev => prev.map(layer =>
+      layer.id === id ? { ...layer, visible: !layer.visible } : layer
+    ));
+  }, []);
+
   useEffect(() => {
     async function fetchHeatMapData() {
       if (!tenant?.id) return;
@@ -149,36 +197,44 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     fetchHeatMapData();
   }, [tenant]);
 
+  const value = {
+    stateLayerVisible,
+    countyLayerVisible,
+    zipLayerVisible,
+    branchLayerVisible,
+    representativeLayerVisible,
+    heatMapLayerVisible,
+    isDrawingMode,
+    territoryTypes,
+    territoryTypeVisibility,
+    heatMapDatasets,
+    activeHeatMapLayers,
+    dataLayers,
+    activeDataLayerId,
+    setStateLayerVisible,
+    setCountyLayerVisible,
+    setZipLayerVisible,
+    setBranchLayerVisible,
+    setRepresentativeLayerVisible,
+    setHeatMapLayerVisible,
+    setIsDrawingMode,
+    setTerritoryTypes,
+    setTerritoryTypeVisibility,
+    setHeatMapDatasets,
+    toggleHeatMapLayer,
+    updateHeatMapLayerSettings,
+    addHeatMapLayer,
+    removeHeatMapLayer,
+    setDataLayers,
+    addDataLayer,
+    updateDataLayer,
+    removeDataLayer,
+    setActiveDataLayer: setActiveDataLayerId,
+    toggleDataLayerVisibility,
+  };
+
   return (
-    <MapContext.Provider
-      value={{
-        stateLayerVisible,
-        countyLayerVisible,
-        zipLayerVisible,
-        branchLayerVisible,
-        representativeLayerVisible,
-        heatMapLayerVisible,
-        isDrawingMode,
-        territoryTypes,
-        territoryTypeVisibility,
-        heatMapDatasets,
-        activeHeatMapLayers,
-        setStateLayerVisible,
-        setCountyLayerVisible,
-        setZipLayerVisible,
-        setBranchLayerVisible,
-        setRepresentativeLayerVisible,
-        setHeatMapLayerVisible,
-        setIsDrawingMode,
-        setTerritoryTypes,
-        setTerritoryTypeVisibility,
-        setHeatMapDatasets,
-        toggleHeatMapLayer,
-        updateHeatMapLayerSettings,
-        addHeatMapLayer,
-        removeHeatMapLayer,
-      }}
-    >
+    <MapContext.Provider value={value}>
       {children}
     </MapContext.Provider>
   );
