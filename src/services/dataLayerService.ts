@@ -68,7 +68,7 @@ export async function createDataLayer(
     id: dataLayerId,
     name,
     config,
-    visible: true,
+    visible: false,
     status: 'processing',
     data: [],
     processingDetails: {

@@ -65,7 +65,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   const [zipLayerVisible, setZipLayerVisible] = useState(false);
   const [branchLayerVisible, setBranchLayerVisible] = useState(true);
   const [representativeLayerVisible, setRepresentativeLayerVisible] = useState(true);
-  const [heatMapLayerVisible, setHeatMapLayerVisible] = useState(true);
+  const [heatMapLayerVisible, setHeatMapLayerVisible] = useState(false);
   const [isDrawingMode, setIsDrawingMode] = useState(false);
   const [territoryTypes, setTerritoryTypes] = useState<TerritoryTypeDefinition[]>([]);
   const [territoryTypeVisibility, setTerritoryTypeVisibilityState] = useState<{ [key: string]: boolean }>({});
@@ -86,7 +86,11 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
 
       try {
         const layers = await getDataLayers(tenant.id);
-        setDataLayers(layers);
+        // Only set visible layers to state
+        setDataLayers(layers.filter(layer => layer.visible).map(layer => ({
+          ...layer,
+          visible: false // Force all layers to start as invisible
+        })));
       } catch (error) {
         console.error('Error fetching data layers:', error);
         setDataLayers([]); // Reset on error

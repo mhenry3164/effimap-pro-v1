@@ -16,7 +16,7 @@ import { Pencil, Trash, Palette, X } from 'lucide-react';
 import { Button } from '../ui/button';
 import { useTerritoryDetails } from '../../hooks/useTerritoryDetails';
 import { ConfirmDialog } from '../common/ConfirmDialog';
-import { ColorPicker } from '../ui/color-picker';
+import { ColorPickerDialog } from './ColorPickerDialog';
 import { TerritoryForm } from './TerritoryForm';
 import { HeatMapLayer } from '../map/HeatMapLayer';
 import { DataLayer } from '../map/DataLayer';
@@ -581,24 +581,27 @@ export const Map: React.FC = () => {
             message="Are you sure you want to delete this territory? This action cannot be undone."
             onConfirm={handleDeleteConfirm}
             onCancel={() => setShowDeleteConfirm(false)}
-            inert  // Use inert instead of aria-hidden
           />
         )}
         {showColorPicker && (
-          <div 
-            role="dialog"
-            aria-modal="true"
-            className="color-picker-modal"
-            inert  // Use inert instead of aria-hidden
-          >
-            <ColorPicker
-              color={territoryStyle.fillColor}
-              onChange={(color) =>
-                setTerritoryStyle((prev) => ({ ...prev, fillColor: color }))
-              }
-              onClose={() => setShowColorPicker(false)}
-            />
-          </div>
+          <ColorPickerDialog
+            isOpen={showColorPicker}
+            onClose={() => setShowColorPicker(false)}
+            onConfirm={(fillColor, strokeColor, fillOpacity) => {
+              setTerritoryStyle(prev => ({
+                ...prev,
+                fillColor,
+                strokeColor,
+                fillOpacity
+              }));
+              handleStyleSave();
+            }}
+            initialColors={{
+              fillColor: territoryStyle.fillColor,
+              strokeColor: territoryStyle.strokeColor,
+              fillOpacity: territoryStyle.fillOpacity
+            }}
+          />
         )}
       </>
     );
@@ -630,9 +633,11 @@ export const Map: React.FC = () => {
           >
             {map && (
               <>
-                {dataLayers.map(layer => (
-                  <DataLayer key={layer.id} layer={layer} />
-                ))}
+                {dataLayers
+                  .filter(layer => layer.visible)
+                  .map(layer => (
+                    <DataLayer key={layer.id} layer={layer} />
+                  ))}
                 <TerritoryLayer
                   key={`territory-layer`}
                   map={map}
