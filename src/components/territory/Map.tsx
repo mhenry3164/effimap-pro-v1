@@ -477,27 +477,42 @@ export const Map: React.FC = () => {
     if (!selectedTerritoryState?.id || !tenant?.id) return;
 
     try {
-      const updatedTerritory: Territory = {
-        ...selectedTerritoryState,
+      // Create update object following TerritoryUpdate pattern
+      const update: TerritoryUpdate = {
+        id: selectedTerritoryState.id,
         boundary: {
-          ...selectedTerritoryState.boundary,
+          type: 'Polygon',
+          coordinates: selectedTerritoryState.boundary.coordinates,
           style: {
-            ...territoryStyle
+            fillColor: territoryStyle.fillColor,
+            strokeColor: territoryStyle.strokeColor,
+            fillOpacity: territoryStyle.fillOpacity,
+            strokeOpacity: territoryStyle.strokeOpacity,
+            strokeWeight: territoryStyle.strokeWeight
           }
+        },
+        metadata: {
+          version: (selectedTerritoryState.metadata?.version || 0) + 1,
+          updatedAt: Timestamp.now(),
+          updatedBy: user.id || 'unknown'
         }
       };
 
-      await territoryService.update(tenant.id, selectedTerritoryState.id, updatedTerritory);
-      setTerritories((prev) =>
-        prev.map((t) => (t.id === selectedTerritoryState.id ? updatedTerritory : t))
+      // Update Firestore
+      await territoryService.update(tenant.id, selectedTerritoryState.id, update);
+      
+      // Update local state after successful Firestore update
+      setTerritories(prev =>
+        prev.map(t => t.id === selectedTerritoryState.id ? { ...t, ...update } : t)
       );
+      
       setShowColorPicker(false);
       toast.success('Territory style updated');
     } catch (error) {
       console.error('Error updating territory style:', error);
       toast.error('Failed to update territory style');
     }
-  }, [selectedTerritoryState, territoryStyle, tenant?.id]);
+  }, [selectedTerritoryState, territoryStyle, tenant?.id, user.id]);
 
   // Initialize drawing manager when drawing mode changes
   useEffect(() => {
@@ -581,6 +596,7 @@ export const Map: React.FC = () => {
             message="Are you sure you want to delete this territory? This action cannot be undone."
             onConfirm={handleDeleteConfirm}
             onCancel={() => setShowDeleteConfirm(false)}
+            inert  // Use inert instead of aria-hidden
           />
         )}
         {showColorPicker && (

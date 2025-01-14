@@ -116,17 +116,22 @@ export class TerritoryService {
   async update(tenantId: string, id: string, territory: Partial<Territory>): Promise<void> {
     try {
       const territoryRef = doc(db, 'tenants', tenantId, 'territories', id);
-      const updateData: any = { ...territory };
-
-      if (territory.boundary?.coordinates) {
-        updateData.metrics = this.calculateMetrics(territory.boundary.coordinates);
-      }
-
-      updateData.metadata = {
-        ...territory.metadata,
-        updatedAt: Timestamp.now()
+      
+      // Get current territory data
+      const currentDoc = await getDoc(territoryRef);
+      const currentData = currentDoc.data();
+      
+      // Create the update object
+      const updateData = {
+        ...currentData,
+        ...territory,
+        metadata: {
+          ...currentData.metadata,
+          updatedAt: Timestamp.now()
+        }
       };
 
+      // Update the document
       await updateDoc(territoryRef, updateData);
     } catch (error) {
       console.error('Error updating territory:', error);
