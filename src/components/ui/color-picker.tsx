@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 interface ColorPickerProps {
   color: string;
@@ -13,12 +13,29 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
   className = '',
   disabled = false,
 }) => {
+  // Maintain internal state for the color value to ensure updates are reflected
+  const [currentColor, setCurrentColor] = useState(color);
+  
+  // Update the internal state when the prop changes
+  useEffect(() => {
+    if (color !== currentColor) {
+      setCurrentColor(color);
+    }
+  }, [color]);
+  
+  // Handle color changes
+  const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newColor = e.target.value;
+    setCurrentColor(newColor);
+    onChange(newColor);
+  };
+
   return (
     <div className={`relative inline-block ${className}`}>
       <input
         type="color"
-        value={color}
-        onChange={(e) => onChange(e.target.value)}
+        value={currentColor}
+        onChange={handleColorChange}
         disabled={disabled}
         className={`
           h-10 w-full cursor-pointer rounded-md border border-input
@@ -31,7 +48,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
       />
       <div
         className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none"
-        style={{ backgroundColor: color }}
+        style={{ backgroundColor: currentColor }}
       >
         <div className="w-6 h-6 rounded-sm border border-gray-300" />
       </div>
@@ -39,4 +56,5 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
   );
 };
 
+// Make sure we're exporting the component correctly
 export default ColorPicker;
