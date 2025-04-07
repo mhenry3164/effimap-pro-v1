@@ -473,46 +473,49 @@ export const Map: React.FC = () => {
     }
   }, [selectedTerritoryState, tenant, refreshTerritories]);
 
-  const handleStyleSave = useCallback(async () => {
-    if (!selectedTerritoryState?.id || !tenant?.id) return;
+  const handleStyleSave = useCallback(
+    async () => {
+      if (!selectedTerritoryState?.id || !tenant?.id) return;
 
-    try {
-      // Create update object following TerritoryUpdate pattern
-      const update: TerritoryUpdate = {
-        id: selectedTerritoryState.id,
-        boundary: {
-          type: 'Polygon',
-          coordinates: selectedTerritoryState.boundary.coordinates,
-          style: {
-            fillColor: territoryStyle.fillColor,
-            strokeColor: territoryStyle.strokeColor,
-            fillOpacity: territoryStyle.fillOpacity,
-            strokeOpacity: territoryStyle.strokeOpacity,
-            strokeWeight: territoryStyle.strokeWeight
+      try {
+        // Create update object following TerritoryUpdate pattern
+        const update: TerritoryUpdate = {
+          id: selectedTerritoryState.id,
+          boundary: {
+            type: 'Polygon',
+            coordinates: selectedTerritoryState.boundary.coordinates,
+            style: {
+              fillColor: territoryStyle.fillColor,
+              strokeColor: territoryStyle.strokeColor,
+              fillOpacity: territoryStyle.fillOpacity,
+              strokeOpacity: territoryStyle.strokeOpacity,
+              strokeWeight: territoryStyle.strokeWeight
+            }
+          },
+          metadata: {
+            version: (selectedTerritoryState.metadata?.version || 0) + 1,
+            updatedAt: Timestamp.now(),
+            updatedBy: user.id || 'unknown'
           }
-        },
-        metadata: {
-          version: (selectedTerritoryState.metadata?.version || 0) + 1,
-          updatedAt: Timestamp.now(),
-          updatedBy: user.id || 'unknown'
-        }
-      };
+        };
 
-      // Update Firestore
-      await territoryService.update(tenant.id, selectedTerritoryState.id, update);
-      
-      // Update local state after successful Firestore update
-      setTerritories(prev =>
-        prev.map(t => t.id === selectedTerritoryState.id ? { ...t, ...update } : t)
-      );
-      
-      setShowColorPicker(false);
-      toast.success('Territory style updated');
-    } catch (error) {
-      console.error('Error updating territory style:', error);
-      toast.error('Failed to update territory style');
-    }
-  }, [selectedTerritoryState, territoryStyle, tenant?.id, user.id]);
+        // Update Firestore
+        await territoryService.update(tenant.id, selectedTerritoryState.id, update);
+        
+        // Update local state after successful Firestore update
+        setTerritories(prev =>
+          prev.map(t => t.id === selectedTerritoryState.id ? { ...t, ...update } : t)
+        );
+        
+        setShowColorPicker(false);
+        toast.success('Territory style updated');
+      } catch (error) {
+        console.error('Error updating territory style:', error);
+        toast.error('Failed to update territory style');
+      }
+    },
+    [selectedTerritoryState, territoryStyle, tenant?.id, user.id]
+  );
 
   // Initialize drawing manager when drawing mode changes
   useEffect(() => {
@@ -604,13 +607,69 @@ export const Map: React.FC = () => {
             isOpen={showColorPicker}
             onClose={() => setShowColorPicker(false)}
             onConfirm={(fillColor, strokeColor, fillOpacity) => {
-              setTerritoryStyle(prev => ({
-                ...prev,
+              // First create the new style object with all the current values plus the new ones
+              const newStyle = {
+                ...territoryStyle,
                 fillColor,
                 strokeColor,
                 fillOpacity
-              }));
-              handleStyleSave();
+              };
+              
+              // Update the state for future renders
+              setTerritoryStyle(newStyle);
+              
+              // Immediately update the territory with the new style values
+              if (selectedTerritoryState?.id && tenant?.id) {
+                // Create a modified copy of the current territory with the new style
+                const updatedTerritory = {
+                  ...selectedTerritoryState,
+                  boundary: {
+                    ...selectedTerritoryState.boundary,
+                    style: newStyle
+                  }
+                };
+                
+                // First update the local territories array to immediately reflect the changes visually
+                setTerritories(prev => 
+                  prev.map(t => t.id === selectedTerritoryState.id ? updatedTerritory : t)
+                );
+                
+                // Create update object with the new style for Firestore
+                const update: TerritoryUpdate = {
+                  id: selectedTerritoryState.id,
+                  boundary: {
+                    type: 'Polygon',
+                    coordinates: selectedTerritoryState.boundary.coordinates,
+                    style: newStyle
+                  },
+                  metadata: {
+                    version: (selectedTerritoryState.metadata?.version || 0) + 1,
+                    updatedAt: Timestamp.now(),
+                    updatedBy: user?.id || 'unknown'
+                  }
+                };
+                
+                // Update Firestore in the background
+                territoryService.update(tenant.id, selectedTerritoryState.id, update)
+                  .then(() => {
+                    toast.success('Territory style updated');
+                  })
+                  .catch(error => {
+                    console.error('Error updating territory style:', error);
+                    toast.error('Failed to update territory style');
+                    
+                    // Revert the local changes on error
+                    setTerritories(prev => 
+                      prev.map(t => t.id === selectedTerritoryState.id ? selectedTerritoryState : t)
+                    );
+                  })
+                  .finally(() => {
+                    setShowColorPicker(false);
+                  });
+              } else {
+                // Just close the picker if we don't have a valid territory or tenant
+                setShowColorPicker(false);
+              }
             }}
             initialColors={{
               fillColor: territoryStyle.fillColor,
