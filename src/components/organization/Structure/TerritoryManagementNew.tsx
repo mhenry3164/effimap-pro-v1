@@ -1,46 +1,40 @@
-import React, { useState, useEffect } from 'react';
-import {
-  Box,
-  Typography,
-  Paper,
-  Button,
-  IconButton,
-  Stack,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  TextField,
-  Chip,
-  FormControlLabel,
-  Checkbox,
-} from '@mui/material';
+import React, { useEffect, useState } from 'react';
+import { Box, Button, Typography, Stack, IconButton, Dialog, DialogContent, DialogTitle, DialogActions, TextField, FormControlLabel, Checkbox, Radio, RadioGroup, FormControl, FormLabel, CircularProgress } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import FileUploadIcon from '@mui/icons-material/FileUpload';
-import FileDownloadIcon from '@mui/icons-material/FileDownload';
+import UploadIcon from '@mui/icons-material/Upload';
+import DownloadIcon from '@mui/icons-material/Download';
 import SettingsIcon from '@mui/icons-material/Settings';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import PageLayout from '../../layout/PageLayout';
+import { useToast } from '../../../contexts/ToastContext';
+import { useMap } from '../../../contexts/MapContext';
+import { useTenant } from '../../../contexts/TenantContext';
+import { territoryService } from '../../../services/territoryService';
+import { territoryTypeService } from '../../../services/territoryTypeService';
+import { geoAnalysisService } from '../../../services/geoAnalysisService';
 import { TerritoryList } from '../../territory/TerritoryList';
 import { DashboardMap } from '../../dashboard/DashboardMap';
 import Map from '../../territory/Map';
-import { territoryTypeService, TerritoryTypeDefinition } from '../../../services/territoryTypeService';
-import { useTenant } from '../../../contexts/TenantContext';
-import { useToast } from '../../ui/use-toast';
-import { useMap } from '../../../contexts/MapContext';
+import { Territory } from '../../../types/territory';
 
 export default function TerritoryManagementNew() {
   const { tenant } = useTenant();
-  const { toast } = useToast();
+  const { showToast } = useToast();
   const { setIsDrawingMode } = useMap();
-  const [territoryTypes, setTerritoryTypes] = useState<TerritoryTypeDefinition[]>([]);
+  const [territoryTypes, setTerritoryTypes] = useState([]);
+  const [territories, setTerritories] = useState([]);
   const [isTypesDialogOpen, setIsTypesDialogOpen] = useState(false);
   const [newType, setNewType] = useState({ name: '', code: '', color: '#2196F3', description: '' });
-  const [editingType, setEditingType] = useState<TerritoryTypeDefinition | null>(null);
-  const [addingChildTo, setAddingChildTo] = useState<string | null>(null);
+  const [editingType, setEditingType] = useState(null);
+  const [addingChildTo, setAddingChildTo] = useState(null);
   const [isCategory, setIsCategory] = useState(false);
   const [showMap, setShowMap] = useState(false);
+  
+  // Export menu state
+  const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'csv' | 'geojson'>('csv');
+  const [analysisType, setAnalysisType] = useState<'zip' | 'county'>('zip');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [selectedTerritories, setSelectedTerritories] = useState([]);
 
   useEffect(() => {
     const initializeTypes = async () => {
@@ -59,13 +53,13 @@ export default function TerritoryManagementNew() {
               acc[type.code] = type;
             }
             return acc;
-          }, {} as { [key: string]: TerritoryTypeDefinition })
+          }, {})
         );
         setTerritoryTypes(uniqueTypes);
       } catch (error) {
         console.error('Error initializing territory types:', error);
         setTerritoryTypes([]); // Reset on error
-        toast({
+        showToast({
           title: 'Error',
           description: 'Failed to initialize territory types. Please ensure you are logged in with proper permissions.',
           variant: 'destructive',
@@ -74,7 +68,24 @@ export default function TerritoryManagementNew() {
     };
 
     initializeTypes();
-  }, [tenant?.id, toast]);
+  }, [tenant?.id, showToast]);
+
+  useEffect(() => {
+    const loadTerritories = async () => {
+      if (!tenant?.id) return;
+      
+      try {
+        console.log(`Loading territories for tenant: ${tenant.id}`);
+        const data = await territoryService.getAll(tenant.id);
+        console.log(`Loaded ${data.length} territories:`, data);
+        setTerritories(data);
+      } catch (error) {
+        console.error('Error loading territories:', error);
+      }
+    };
+    
+    loadTerritories();
+  }, [tenant?.id]);
 
   const loadTerritoryTypes = async () => {
     if (!tenant?.id) return;
@@ -88,12 +99,12 @@ export default function TerritoryManagementNew() {
             acc[type.code] = type;
           }
           return acc;
-        }, {} as { [key: string]: TerritoryTypeDefinition })
+        }, {})
       );
       setTerritoryTypes(uniqueTypes);
     } catch (error) {
       console.error('Error loading territory types:', error);
-      toast({
+      showToast({
         title: 'Error',
         description: 'Failed to load territory types',
         variant: 'destructive',
@@ -111,7 +122,172 @@ export default function TerritoryManagementNew() {
   };
 
   const handleExport = () => {
-    console.log('Export clicked');
+    setExportDialogOpen(true);
+  };
+
+  const handleExportMenuClose = () => {
+    setExportMenuAnchor(null);
+  };
+
+  const handleExportOptionClick = (type) => {
+    if (type === 'geojson') {
+      setExportFormat('geojson');
+      handleExportGeoJson();
+      handleExportMenuClose();
+    } else {
+      setAnalysisType(type);
+      setExportFormat('csv');
+      setExportDialogOpen(true);
+      handleExportMenuClose();
+    }
+  };
+
+  const handleExportGeoJson = async () => {
+    if (!tenant?.id) return;
+    
+    try {
+      setIsAnalyzing(true);
+      
+      const territoriesToExport = selectedTerritories.length > 0
+        ? territories.filter(t => selectedTerritories.includes(t.id))
+        : territories;
+      
+      if (territoriesToExport.length === 0) {
+        showToast({
+          title: 'No territories to export',
+          description: 'Please select at least one territory to export.',
+          variant: 'destructive',
+        });
+        setIsAnalyzing(false);
+        return;
+      }
+      
+      console.log(`Exporting ${territoriesToExport.length} territories as GeoJSON`, territoriesToExport);
+      
+      // Generate GeoJSON from territories
+      const geoJson = geoAnalysisService.territoriesToGeoJson(territoriesToExport);
+      
+      // Create download link
+      const blob = new Blob([JSON.stringify(geoJson, null, 2)], { type: 'application/geo+json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `territories_export.geojson`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      showToast({
+        title: 'GeoJSON Export Complete',
+        description: `${territoriesToExport.length} territories exported successfully`,
+      });
+    } catch (error) {
+      console.error('Error exporting GeoJSON:', error);
+      showToast({
+        title: 'Export Failed',
+        description: 'Failed to export territory data as GeoJSON',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleAnalyzeAndExport = async () => {
+    if (!tenant?.id) return;
+    
+    try {
+      setIsAnalyzing(true);
+      
+      const territoriesToAnalyze = selectedTerritories.length > 0
+        ? territories.filter(t => selectedTerritories.includes(t.id))
+        : territories;
+      
+      if (territoriesToAnalyze.length === 0) {
+        showToast({
+          title: 'No territories to analyze',
+          description: 'Please select at least one territory to analyze.',
+          variant: 'destructive',
+        });
+        setIsAnalyzing(false);
+        return;
+      }
+      
+      // Debug: Check if territories have boundary data
+      territoriesToAnalyze.forEach((territory, index) => {
+        console.log(`Territory ${index}: ${territory.name} (${territory.id})`, {
+          hasBoundary: !!territory.boundary,
+          coordinatesLength: territory.boundary?.coordinates?.length || 0,
+          sampleCoordinates: territory.boundary?.coordinates?.slice(0, 3) || []
+        });
+      });
+      
+      console.log(`Analyzing ${territoriesToAnalyze.length} territories for ${analysisType}s`, territoriesToAnalyze);
+      
+      // Ensure we're passing a valid analysisType
+      const validAnalysisType: 'zip' | 'county' = analysisType === 'zip' ? 'zip' : 'county';
+      
+      const data = await geoAnalysisService.analyzeMultipleTerritories(
+        territoriesToAnalyze,
+        validAnalysisType
+      );
+      
+      console.log(`Analysis complete, found entities:`, data);
+      console.log(`Data length: ${data.length} analysis results`);
+      data.forEach((result, index) => {
+        console.log(`Result ${index} for territory ${result.territory.name}: ${result.entities.length} entities found`);
+      });
+      
+      if (exportFormat === 'csv') {
+        // Generate CSV
+        const csv = geoAnalysisService.generateCSV(data);
+        
+        // Create download link
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `territories_${analysisType}_analysis.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else if (exportFormat === 'geojson') {
+        // Generate GeoJSON that includes both territories and contained entities
+        const geoJson = geoAnalysisService.generateGeoJson(data, territoriesToAnalyze);
+        
+        // Create download link
+        const blob = new Blob([JSON.stringify(geoJson, null, 2)], { type: 'application/geo+json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.setAttribute('href', url);
+        link.setAttribute('download', `territories_${analysisType}_analysis.geojson`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+      
+      setExportDialogOpen(false);
+      showToast({
+        title: 'Export Complete',
+        description: exportFormat === 'csv'
+          ? `${analysisType === 'zip' ? 'ZIP code' : 'County'} data exported successfully`
+          : 'GeoJSON data exported successfully',
+      });
+    } catch (error) {
+      console.error('Error analyzing territories:', error);
+      showToast({
+        title: 'Export Failed',
+        description: 'Failed to analyze and export territory data',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleTerritorySelection = (territoryIds) => {
+    console.log('Selected territories:', territoryIds);
+    setSelectedTerritories(territoryIds);
   };
 
   const handleOpenTypesDialog = () => {
@@ -146,13 +322,13 @@ export default function TerritoryManagementNew() {
       }
       await loadTerritoryTypes();
       handleCloseTypesDialog();
-      toast({
+      showToast({
         title: 'Success',
         description: `Territory type ${editingType ? 'updated' : 'created'} successfully`,
       });
     } catch (error) {
       console.error('Error saving territory type:', error);
-      toast({
+      showToast({
         title: 'Error',
         description: `Failed to ${editingType ? 'update' : 'create'} territory type`,
         variant: 'destructive',
@@ -160,19 +336,19 @@ export default function TerritoryManagementNew() {
     }
   };
 
-  const handleDeleteType = async (type: TerritoryTypeDefinition) => {
+  const handleDeleteType = async (type) => {
     if (!tenant?.id || type.isSystem) return;
 
     try {
       await territoryTypeService.delete(tenant.id, type.id);
       await loadTerritoryTypes();
-      toast({
+      showToast({
         title: 'Success',
         description: 'Territory type deleted successfully',
       });
     } catch (error) {
       console.error('Error deleting territory type:', error);
-      toast({
+      showToast({
         title: 'Error',
         description: 'Failed to delete territory type',
         variant: 'destructive',
@@ -181,53 +357,56 @@ export default function TerritoryManagementNew() {
   };
 
   return (
-    <PageLayout>
-      <Box sx={{ p: 3 }}>
-        {/* Header Section */}
-        <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h5" component="h1" sx={{ fontWeight: 600 }}>
-            Territory Management
-          </Typography>
-          <Stack direction="row" spacing={1}>
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              onClick={handleCreateTerritory}
-            >
-              CREATE TERRITORY
-            </Button>
-            <IconButton onClick={handleExport}>
-              <FileDownloadIcon />
-            </IconButton>
-            <IconButton onClick={handleImport}>
-              <FileUploadIcon />
-            </IconButton>
-            <IconButton onClick={handleOpenTypesDialog}>
-              <SettingsIcon />
-            </IconButton>
-          </Stack>
-        </Box>
+    <Box sx={{ p: 3 }}>
+      {/* Header Section */}
+      <Box sx={{ mb: 3, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Typography variant="h5" component="h1" sx={{ fontWeight: 600 }}>
+          Territory Management
+        </Typography>
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<AddIcon />}
+            onClick={handleCreateTerritory}
+          >
+            CREATE TERRITORY
+          </Button>
+          <IconButton onClick={handleExport}>
+            <DownloadIcon />
+          </IconButton>
+          <IconButton onClick={handleImport}>
+            <UploadIcon />
+          </IconButton>
+          <IconButton onClick={handleOpenTypesDialog}>
+            <SettingsIcon />
+          </IconButton>
+        </Stack>
+      </Box>
 
-        {/* Main Content */}
-        <Paper 
-          elevation={0} 
-          sx={{ 
-            backgroundColor: 'background.default',
-            border: 1,
-            borderColor: 'divider'
-          }}
-        >
-          <Box sx={{ p: 3 }}>
-            {/* Map Section */}
-            <Box sx={{ height: '400px', position: 'relative', mb: 3 }}>
-              <DashboardMap />
-            </Box>
-
-            {/* Territory List */}
-            <TerritoryList />
+      {/* Main Content */}
+      <Box 
+        elevation={0} 
+        sx={{ 
+          backgroundColor: 'background.default',
+          border: 1,
+          borderColor: 'divider',
+          height: 'calc(100vh - 180px)', 
+          display: 'flex',
+          flexDirection: 'column'
+        }}
+      >
+        <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', height: '100%' }}>
+          {/* Map Section */}
+          <Box sx={{ height: '400px', position: 'relative', mb: 3 }}>
+            <DashboardMap />
           </Box>
-        </Paper>
+
+          {/* Territory List */}
+          <Box sx={{ flex: 1, overflow: 'auto' }}>
+            <TerritoryList onSelectTerritories={handleTerritorySelection} />
+          </Box>
+        </Box>
       </Box>
 
       {/* Territory Types Dialog */}
@@ -252,15 +431,11 @@ export default function TerritoryManagementNew() {
                 {territoryTypes
                   .filter(type => type.isSystem)
                   .map((type) => (
-                    <Chip
-                      key={type.id}
-                      label={type.name}
-                      sx={{
-                        bgcolor: type.color || '#2196F3',
-                        color: 'white',
-                        mb: 1,
-                      }}
-                    />
+                    <Box key={type.id}>
+                      <Typography variant="body1" sx={{ mb: 1 }}>
+                        {type.name}
+                      </Typography>
+                    </Box>
                   ))}
               </Stack>
 
@@ -270,23 +445,9 @@ export default function TerritoryManagementNew() {
                 .map((category) => (
                   <Box key={category.id}>
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-                      <Chip
-                        label={category.name}
-                        sx={{
-                          bgcolor: category.color || '#2196F3',
-                          color: 'white',
-                        }}
-                        onDelete={() => handleDeleteType(category)}
-                        onClick={() => {
-                          setEditingType(category);
-                          setNewType({
-                            name: category.name,
-                            code: category.code,
-                            color: category.color || '#2196F3',
-                            description: category.description || '',
-                          });
-                        }}
-                      />
+                      <Typography variant="body1">
+                        {category.name}
+                      </Typography>
                       <IconButton
                         size="small"
                         onClick={() => {
@@ -309,25 +470,11 @@ export default function TerritoryManagementNew() {
                         {territoryTypes
                           .filter(type => type.parentType === category.code)
                           .map((type) => (
-                            <Chip
-                              key={type.id}
-                              label={type.name}
-                              sx={{
-                                bgcolor: type.color || category.color || '#2196F3',
-                                color: 'white',
-                                mb: 1,
-                              }}
-                              onDelete={() => handleDeleteType(type)}
-                              onClick={() => {
-                                setEditingType(type);
-                                setNewType({
-                                  name: type.name,
-                                  code: type.code,
-                                  color: type.color || category.color || '#2196F3',
-                                  description: type.description || '',
-                                });
-                              }}
-                            />
+                            <Box key={type.id}>
+                              <Typography variant="body1" sx={{ mb: 1 }}>
+                                {type.name}
+                              </Typography>
+                            </Box>
                           ))}
                       </Stack>
                     </Box>
@@ -339,25 +486,11 @@ export default function TerritoryManagementNew() {
                 {territoryTypes
                   .filter(type => !type.isSystem && !type.isCategory && !type.parentType)
                   .map((type) => (
-                    <Chip
-                      key={type.id}
-                      label={type.name}
-                      sx={{
-                        bgcolor: type.color || '#2196F3',
-                        color: 'white',
-                        mb: 1,
-                      }}
-                      onDelete={() => handleDeleteType(type)}
-                      onClick={() => {
-                        setEditingType(type);
-                        setNewType({
-                          name: type.name,
-                          code: type.code,
-                          color: type.color || '#2196F3',
-                          description: type.description || '',
-                        });
-                      }}
-                    />
+                    <Box key={type.id}>
+                      <Typography variant="body1" sx={{ mb: 1 }}>
+                        {type.name}
+                      </Typography>
+                    </Box>
                   ))}
               </Stack>
             </Stack>
@@ -433,6 +566,82 @@ export default function TerritoryManagementNew() {
         </DialogActions>
       </Dialog>
 
+      {/* Export Dialog */}
+      <Dialog 
+        open={exportDialogOpen} 
+        onClose={() => !isAnalyzing && setExportDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          Export {analysisType === 'zip' ? 'ZIP Codes' : 'Counties'} {exportFormat === 'csv' ? '(CSV)' : '(GeoJSON)'}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="body1" gutterBottom>
+              This will analyze the selected territories and export all {analysisType === 'zip' ? 'ZIP codes' : 'counties'} that fall within them.
+            </Typography>
+            
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+              {selectedTerritories.length === 0 
+                ? 'All territories will be analyzed.' 
+                : `${selectedTerritories.length} territory/-ies selected for analysis.`}
+            </Typography>
+
+            <Box sx={{ mt: 2 }}>
+              <FormControl component="fieldset">
+                <FormLabel component="legend">Analysis Type</FormLabel>
+                <RadioGroup
+                  row
+                  value={analysisType}
+                  onChange={(e) => setAnalysisType(e.target.value as 'zip' | 'county')}
+                >
+                  <FormControlLabel value="zip" control={<Radio />} label="ZIP Codes" />
+                  <FormControlLabel value="county" control={<Radio />} label="Counties" />
+                </RadioGroup>
+              </FormControl>
+            </Box>
+
+            <Box sx={{ mt: 2 }}>
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    checked={exportFormat === 'geojson'}
+                    onChange={(e) => setExportFormat(e.target.checked ? 'geojson' : 'csv')}
+                  />
+                }
+                label="Export as GeoJSON instead of CSV"
+              />
+              <Typography variant="caption" color="text.secondary" display="block">
+                GeoJSON is a standard format for representing geographic data that can be imported into GIS software.
+              </Typography>
+            </Box>
+            
+            {isAnalyzing && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3, mb: 2 }}>
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <CircularProgress size={24} />
+                  <Typography>Analyzing territories...</Typography>
+                </Stack>
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setExportDialogOpen(false)} disabled={isAnalyzing}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleAnalyzeAndExport} 
+            variant="contained" 
+            disabled={isAnalyzing}
+            startIcon={<DownloadIcon />}
+          >
+            Analyze & Export
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Map Overlay */}
       {showMap && (
         <div 
@@ -461,6 +670,6 @@ export default function TerritoryManagementNew() {
           <Map />
         </div>
       )}
-    </PageLayout>
+    </Box>
   );
 }

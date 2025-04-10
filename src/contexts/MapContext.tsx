@@ -5,7 +5,7 @@ import { heatMapService } from '../services/heatMapService';
 import { useTenant } from '../hooks/useTenant';
 import { gradientOptions } from '../constants/heatmapConstants';
 import { DEFAULT_HEATMAP_CONTROLS } from '../constants/heatmapEnhanced';
-import { DataLayer, DataLayerConfig, DataLayerStatus } from '../services/dataLayerService';
+import { DataLayer } from '../services/dataLayerService';
 import { getDataLayers } from '../services/dataLayerService';
 
 interface HeatMapLayerSettings {
@@ -33,6 +33,7 @@ interface MapContextType {
   territoryTypeVisibility: { [key: string]: boolean };
   heatMapDatasets: HeatMapDataset[];
   activeHeatMapLayers: ActiveHeatMapLayer[];
+  heatMapData: google.maps.visualization.WeightedLocation[];
   dataLayers: DataLayer[];
   activeDataLayerId: string | null;
   setStateLayerVisible: (visible: boolean) => void;
@@ -55,6 +56,7 @@ interface MapContextType {
   removeDataLayer: (id: string) => void;
   setActiveDataLayer: (id: string | null) => void;
   toggleDataLayerVisibility: (id: string) => void;
+  updateHeatMapData: (data: google.maps.visualization.WeightedLocation[]) => void;
 }
 
 const MapContext = createContext<MapContextType | undefined>(undefined);
@@ -71,6 +73,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
   const [territoryTypeVisibility, setTerritoryTypeVisibilityState] = useState<{ [key: string]: boolean }>({});
   const [heatMapDatasets, setHeatMapDatasets] = useState<HeatMapDataset[]>([]);
   const [activeHeatMapLayers, setActiveHeatMapLayers] = useState<ActiveHeatMapLayer[]>([]);
+  const [heatMapData, setHeatMapData] = useState<google.maps.visualization.WeightedLocation[]>([]);
   const [dataLayers, setDataLayers] = useState<DataLayer[]>([]);
   const [activeDataLayerId, setActiveDataLayerId] = useState<string | null>(null);
 
@@ -146,7 +149,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
           visible: true,
           minWeight: dataset.metadata.minWeight,
           maxWeight: dataset.metadata.maxWeight,
-          gradient: gradientOptions[0].gradient,
+          gradient: [...gradientOptions[0].gradient], // Convert readonly array to regular array
           controls: DEFAULT_HEATMAP_CONTROLS
         }
       }
@@ -175,6 +178,10 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     setDataLayers(prev => prev.map(layer =>
       layer.id === id ? { ...layer, visible: !layer.visible } : layer
     ));
+  }, []);
+
+  const updateHeatMapData = useCallback((data: google.maps.visualization.WeightedLocation[]) => {
+    setHeatMapData(data);
   }, []);
 
   useEffect(() => {
@@ -217,6 +224,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     territoryTypeVisibility,
     heatMapDatasets,
     activeHeatMapLayers,
+    heatMapData,
     dataLayers,
     activeDataLayerId,
     setStateLayerVisible,
@@ -239,6 +247,7 @@ export function MapProvider({ children }: { children: React.ReactNode }) {
     removeDataLayer,
     setActiveDataLayer: setActiveDataLayerId,
     toggleDataLayerVisibility,
+    updateHeatMapData,
   };
 
   return (

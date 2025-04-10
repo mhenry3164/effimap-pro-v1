@@ -42,7 +42,7 @@ import MainLayout from './components/layout/MainLayout';
 
 // Context Providers
 import { TenantProvider } from './contexts/TenantContext';
-import { Toaster } from 'react-hot-toast';
+import { ToastProvider } from './contexts/ToastContext';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useStore(state => ({
@@ -82,103 +82,104 @@ const App = () => {
   return (
     <Router>
       <TenantProvider>
-        <div className="app">
-          <Toaster position="top-right" />
-          <Routes>
-            {/* Public Routes */}
-            <Route element={<PublicLayout />}>
-              <Route path="/home" element={<HomePage />} />
-              <Route path="/features" element={<FeaturesPage />} />
-              <Route path="/about" element={<AboutPage />} />
-              <Route path="/pricing" element={<PricingPage />} />
-              <Route path="/contact" element={<ContactPage />} />
-              <Route path="/login" element={<AuthForm type="login" />} />
-              <Route path="/signup" element={<AuthForm type="signup" />} />
-              {/* Redirect root to home for unauthenticated users */}
-              <Route path="/" element={
-                user ? <Navigate to={getDefaultRoute()} replace /> : <Navigate to="/home" replace />
-              } />
-            </Route>
+        <ToastProvider>
+          <div className="app">
+            <Routes>
+              {/* Public Routes */}
+              <Route element={<PublicLayout />}>
+                <Route path="/home" element={<HomePage />} />
+                <Route path="/features" element={<FeaturesPage />} />
+                <Route path="/about" element={<AboutPage />} />
+                <Route path="/pricing" element={<PricingPage />} />
+                <Route path="/contact" element={<ContactPage />} />
+                <Route path="/login" element={<AuthForm type="login" />} />
+                <Route path="/signup" element={<AuthForm type="signup" />} />
+                {/* Redirect root to home for unauthenticated users */}
+                <Route path="/" element={
+                  user ? <Navigate to={getDefaultRoute()} replace /> : <Navigate to="/home" replace />
+                } />
+              </Route>
 
-            {/* Protected Routes */}
-            <Route
-              element={
-                <ProtectedRoute>
-                  <MainLayout />
-                </ProtectedRoute>
-              }
-            >
-              {/* Default Route */}
-              <Route index element={<Navigate to={getDefaultRoute()} replace />} />
+              {/* Protected Routes */}
+              <Route
+                element={
+                  <ProtectedRoute>
+                    <MainLayout />
+                  </ProtectedRoute>
+                }
+              >
+                {/* Default Route */}
+                <Route index element={<Navigate to={getDefaultRoute()} replace />} />
 
-              {/* Platform Admin Routes */}
-              {user?.platformRole === 'platformAdmin' && (
-                <Route path="platform/*">
-                  <Route index element={<Navigate to="dashboard" replace />} />
-                  <Route path="dashboard" element={<PlatformDashboard />} />
-                  <Route path="organizations" element={<TenantMonitoring />} />
-                  <Route path="users" element={<UserManagement />} />
-                  <Route path="settings" element={<PlatformSettings />} />
-                  <Route path="health" element={<SystemHealth />} />
-                </Route>
-              )}
+                {/* Platform Admin Routes */}
+                {user?.platformRole === 'platformAdmin' && (
+                  <Route path="platform/*">
+                    <Route index element={<Navigate to="dashboard" replace />} />
+                    <Route path="dashboard" element={<PlatformDashboard />} />
+                    <Route path="organizations" element={<TenantMonitoring />} />
+                    <Route path="users" element={<UserManagement />} />
+                    <Route path="settings" element={<PlatformSettings />} />
+                    <Route path="health" element={<SystemHealth />} />
+                  </Route>
+                )}
 
-              {/* Common Protected Routes */}
-              <Route path="dashboard" element={<Dashboard />} />
-              <Route path="profile" element={<Profile />} />
-              <Route path="notifications" element={<Notifications />} />
-              <Route path="map" element={<Map />} />
-              <Route 
-                path="territory-management" 
-                element={<TerritoryManagementNew />} 
-              />
+                {/* Common Protected Routes */}
+                <Route path="dashboard" element={<Dashboard />} />
+                <Route path="profile" element={<Profile />} />
+                <Route path="notifications" element={<Notifications />} />
+                <Route path="map" element={<Map />} />
+                <Route 
+                  path="territory-management" 
+                  element={<TerritoryManagementNew />} 
+                />
 
-              {/* Role-Based Routes */}
-              {user?.organizationRoles?.includes('orgAdmin') && (
-                <>
-                  <Route path="divisions" element={<DivisionManager />} />
-                  <Route path="branches" element={<BranchManagement />} />
-                  <Route path="users" element={<UserManagement />} />
-                  <Route path="territories/*" element={<TerritoryRoutes />} />
-                  <Route path="settings" element={<OrganizationSettings />} />
-                  <Route path="analytics" element={<div>Analytics Dashboard</div>} />
-                  <Route path="organization/advanced-mapping" element={<AdvancedMapping />} />
-                </>
-              )}
+                {/* Role-Based Routes */}
+                {user?.organizationRoles?.includes('orgAdmin') && (
+                  <>
+                    <Route path="divisions" element={<DivisionManager />} />
+                    <Route path="branches" element={<BranchManagement />} />
+                    <Route path="users" element={<UserManagement />} />
+                    <Route path="territories/*" element={<TerritoryRoutes />} />
+                    <Route path="settings" element={<OrganizationSettings />} />
+                    <Route path="analytics" element={<div>Analytics Dashboard</div>} />
+                    <Route path="organization/advanced-mapping" element={<AdvancedMapping />} />
+                  </>
+                )}
 
-              {user?.organizationRoles?.includes('divisionAdmin') && (
-                <>
-                  <Route path="branches" element={<BranchManagement />} />
-                  <Route path="map" element={<Map />} />
-                  <Route path="territory-management" element={<TerritoryManagementNew />} />
-                  <Route path="territories/*" element={<TerritoryRoutes />} />
-                  <Route path="settings" element={<OrganizationSettings />} />
-                </>
-              )}
+                {user?.organizationRoles?.includes('divisionAdmin') && (
+                  <>
+                    <Route path="branches" element={<BranchManagement />} />
+                    <Route path="map" element={<Map />} />
+                    <Route path="territory-management" element={<TerritoryManagementNew />} />
+                    <Route path="territories/*" element={<TerritoryRoutes />} />
+                    <Route path="settings" element={<OrganizationSettings />} />
+                  </>
+                )}
 
-              {user?.organizationRoles?.includes('branchAdmin') && (
-                <>
-                  <Route path="map" element={<Map />} />
-                  <Route path="territory-management" element={<TerritoryManagementNew />} />
-                  <Route path="territories/*" element={<TerritoryRoutes />} />
-                  <Route path="representatives" element={<UserList />} />
-                  <Route path="settings" element={<OrganizationSettings />} />
-                </>
-              )}
+                {user?.organizationRoles?.includes('branchAdmin') && (
+                  <>
+                    <Route path="map" element={<Map />} />
+                    <Route path="territory-management" element={<TerritoryManagementNew />} />
+                    <Route path="territories/*" element={<TerritoryRoutes />} />
+                    <Route path="representatives" element={<UserList />} />
+                    <Route path="settings" element={<OrganizationSettings />} />
+                  </>
+                )}
 
-              {user?.organizationRoles?.includes('representative') && (
-                <>
-                  <Route path="map" element={<Map />} />
-                  <Route path="territories/*" element={<TerritoryRoutes />} />
-                  <Route path="settings" element={<OrganizationSettings />} />
-                </>
-              )}
+                {user?.organizationRoles?.includes('representative') && (
+                  <>
+                    <Route path="map" element={<Map />} />
+                    <Route path="territories/*" element={<TerritoryRoutes />} />
+                    <Route path="settings" element={<OrganizationSettings />} />
+                  </>
+                )}
 
-              {/* Catch-all route */}
-              <Route path="*" element={<Navigate to={getDefaultRoute()} replace />} />
-            </Route>
-          </Routes>
-        </div>
+                {/* Catch-all route */}
+                <Route path="*" element={<Navigate to={getDefaultRoute()} replace />} />
+              </Route>
+            </Routes>
+          </div>
+        </ToastProvider>
       </TenantProvider>
     </Router>
   );

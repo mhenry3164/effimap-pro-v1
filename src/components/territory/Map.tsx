@@ -25,7 +25,8 @@ import {
   TerritoryPoint, 
   TerritoryStyle, 
   TerritoryUpdate, 
-  NewTerritory 
+  NewTerritory,
+  TerritoryMetadata
 } from '../../types/territory';
 import { Timestamp } from 'firebase/firestore';
 
@@ -284,25 +285,41 @@ export const Map: React.FC = () => {
           coordinates.push({ index, lat: point.lat(), lng: point.lng() });
         });
 
-        // Create territory with coordinates
-        const territory: Omit<Territory, 'id'> = {
-          ...formData,
+        // Convert NewTerritory to a complete Territory with required fields
+        const newTerritory: Omit<Territory, 'id'> = {
+          name: formData.name,
+          code: formData.code,
+          type: formData.type,
+          status: 'active',
           boundary: {
             type: 'Polygon',
             coordinates: coordinates,
             style: territoryStyle
           },
-          status: 'active',
           metadata: {
             version: 1,
             createdAt: Timestamp.now(),
             updatedAt: Timestamp.now(),
-            createdBy: user.id || 'unknown',
-            updatedBy: user.id || 'unknown'
-          }
+            createdBy: user?.uid || 'unknown',
+            updatedBy: user?.uid || 'unknown'
+          },
+          metrics: {
+            area: 0,
+            perimeter: 0,
+            pointCount: coordinates.length
+          },
+          center: {
+            lat: path.getAt(0).lat(),
+            lng: path.getAt(0).lng()
+          },
+          // Remove lat and lng as direct properties as they don't exist in Territory type
+          parent: formData.parent,
+          children: [],
+          assignedTo: formData.assignedTo,
+          tags: formData.tags
         };
 
-        await territoryService.add(tenant.id, territory);
+        await territoryService.add(tenant.id, newTerritory);
 
         // Clean up drawing state
         setShowEditor(false);
@@ -401,6 +418,19 @@ export const Map: React.FC = () => {
         }
 
         // Step 1: Save the update
+        if (user) {
+          const completeMetadata: TerritoryMetadata = {
+            ...editedTerritory.metadata,
+            version: (editedTerritory.metadata?.version || 0) + 1,
+            updatedAt: Timestamp.now(),
+            updatedBy: user.uid,
+            createdAt: editedTerritory.metadata?.createdAt || Timestamp.now(),
+            createdBy: editedTerritory.metadata?.createdBy || user.uid
+          };
+          
+          editedTerritory.metadata = completeMetadata;
+        }
+        
         await territoryService.update(tenant.id, editedTerritory.id, editedTerritory);
         
         // Step 2: Refresh territories data
@@ -412,16 +442,22 @@ export const Map: React.FC = () => {
         setShowTooltip(false);
 
         // Step 4: Log activity (non-blocking)
-        activityService.logActivity(tenant.id, {
-          type: 'edit',
+        await activityService.logActivity(tenant.id, {
+          type: 'territory.edit',
           entityType: 'territory',
           entityId: editedTerritory.id,
           entityName: editedTerritory.name || 'Unnamed Territory',
-          userId: user.id,
+          userId: user?.uid || 'unknown',
+          userName: user?.displayName || 'Unknown User',
+          tenantId: tenant.id,
           details: {
-            boundary: editedTerritory.boundary
+            previousState: editedTerritory,
+            newState: editedTerritory,
+            changes: {
+              boundary: { old: editedTerritory.boundary, new: editedTerritory.boundary }
+            }
           }
-        }).catch(console.error); // Handle logging error separately
+        });
         
         // Step 5: Show success message
         toast.success('Territory updated successfully');
@@ -443,7 +479,7 @@ export const Map: React.FC = () => {
 
     try {
       // Step 1: Delete the territory
-      await territoryService.delete(tenant.id, selectedTerritoryState.id, user.id);
+      await territoryService.delete(tenant.id, selectedTerritoryState.id, user?.uid || 'unknown');
       
       // Step 2: Refresh territories data to ensure consistency
       await refreshTerritories();
@@ -454,16 +490,19 @@ export const Map: React.FC = () => {
       setShowTooltip(false);
 
       // Step 4: Log activity (non-blocking)
-      activityService.logActivity(tenant.id, {
-        type: 'delete',
+      await activityService.logActivity(tenant.id, {
+        type: 'territory.delete',
         entityType: 'territory',
         entityId: selectedTerritoryState.id,
         entityName: selectedTerritoryState.name || 'Unnamed Territory',
-        userId: user.id,
+        userId: user?.uid || 'unknown',
+        userName: user?.displayName || 'Unknown User',
+        tenantId: tenant.id,
         details: {
-          territoryType: selectedTerritoryState.type
+          previousState: selectedTerritoryState,
+          reason: 'User initiated deletion'
         }
-      }).catch(console.error); // Handle logging error separately
+      });
       
       // Step 5: Show success message
       toast.success('Territory deleted successfully');
@@ -495,10 +534,25 @@ export const Map: React.FC = () => {
           metadata: {
             version: (selectedTerritoryState.metadata?.version || 0) + 1,
             updatedAt: Timestamp.now(),
-            updatedBy: user.id || 'unknown'
+            updatedBy: user?.uid || 'unknown',
+            createdAt: selectedTerritoryState.metadata?.createdAt || Timestamp.now(),
+            createdBy: selectedTerritoryState.metadata?.createdBy || user?.uid || 'unknown'
           }
         };
 
+        if (user) {
+          const completeMetadata: TerritoryMetadata = {
+            ...update.metadata,
+            version: (selectedTerritoryState.metadata?.version || 0) + 1,
+            updatedAt: Timestamp.now(),
+            updatedBy: user.uid,
+            createdAt: selectedTerritoryState.metadata?.createdAt || Timestamp.now(),
+            createdBy: selectedTerritoryState.metadata?.createdBy || user.uid
+          };
+          
+          update.metadata = completeMetadata;
+        }
+        
         // Update Firestore
         await territoryService.update(tenant.id, selectedTerritoryState.id, update);
         
@@ -514,7 +568,7 @@ export const Map: React.FC = () => {
         toast.error('Failed to update territory style');
       }
     },
-    [selectedTerritoryState, territoryStyle, tenant?.id, user.id]
+    [selectedTerritoryState, territoryStyle, tenant?.id, user?.uid]
   );
 
   // Initialize drawing manager when drawing mode changes
@@ -594,12 +648,11 @@ export const Map: React.FC = () => {
       <>
         {showDeleteConfirm && (
           <ConfirmDialog
-            open={showDeleteConfirm}
+            open={true}
             title="Delete Territory"
             message="Are you sure you want to delete this territory? This action cannot be undone."
             onConfirm={handleDeleteConfirm}
             onCancel={() => setShowDeleteConfirm(false)}
-            inert  // Use inert instead of aria-hidden
           />
         )}
         {showColorPicker && (
@@ -645,9 +698,24 @@ export const Map: React.FC = () => {
                   metadata: {
                     version: (selectedTerritoryState.metadata?.version || 0) + 1,
                     updatedAt: Timestamp.now(),
-                    updatedBy: user?.id || 'unknown'
+                    updatedBy: user?.uid || 'unknown',
+                    createdAt: selectedTerritoryState.metadata?.createdAt || Timestamp.now(),
+                    createdBy: selectedTerritoryState.metadata?.createdBy || user?.uid || 'unknown'
                   }
                 };
+                
+                if (user) {
+                  const completeMetadata: TerritoryMetadata = {
+                    ...update.metadata,
+                    version: (selectedTerritoryState.metadata?.version || 0) + 1,
+                    updatedAt: Timestamp.now(),
+                    updatedBy: user.uid,
+                    createdAt: selectedTerritoryState.metadata?.createdAt || Timestamp.now(),
+                    createdBy: selectedTerritoryState.metadata?.createdBy || user.uid
+                  };
+                  
+                  update.metadata = completeMetadata;
+                }
                 
                 // Update Firestore in the background
                 territoryService.update(tenant.id, selectedTerritoryState.id, update)

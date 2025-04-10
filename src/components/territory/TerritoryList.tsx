@@ -11,15 +11,17 @@ import {
   TableRow,
   Chip,
   CircularProgress,
-  Stack,
+  Checkbox,
+  Toolbar,
+  Tooltip,
+  alpha,
 } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
-import SearchIcon from '@mui/icons-material/Search';
-import FilterListIcon from '@mui/icons-material/FilterList';
+import SelectAllIcon from '@mui/icons-material/SelectAll';
+import ClearIcon from '@mui/icons-material/Clear';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../hooks/useAuth';
 import { useTenant } from '../../contexts/TenantContext';
 import { territoryService } from '../../services/territoryService';
 import type { Territory, TerritoryType } from '../../types/territory';
@@ -50,13 +52,17 @@ const getStatusChipProps = (status: string) => {
   };
 };
 
-export const TerritoryList: React.FC = () => {
+export interface TerritoryListProps {
+  onSelectTerritories?: (territoryIds: string[]) => void;
+}
+
+export const TerritoryList: React.FC<TerritoryListProps> = ({ onSelectTerritories }) => {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const { tenant, error: tenantError } = useTenant();
   const [territories, setTerritories] = useState<Territory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedTerritories, setSelectedTerritories] = useState<string[]>([]);
 
   useEffect(() => {
     const fetchTerritories = async () => {
@@ -81,14 +87,62 @@ export const TerritoryList: React.FC = () => {
     fetchTerritories();
   }, [tenant?.id, tenantError]);
 
-  const handleDelete = async (territoryId: string) => {
+  const handleDelete = async (territoryId: string, event?: React.MouseEvent) => {
+    if (event) {
+      event.stopPropagation();
+    }
+    
     if (!tenant?.id) return;
     
     try {
       await territoryService.delete(tenant.id, territoryId);
       setTerritories(territories.filter(t => t.id !== territoryId));
+      // Remove from selection if selected
+      if (selectedTerritories.includes(territoryId)) {
+        const newSelection = selectedTerritories.filter(id => id !== territoryId);
+        setSelectedTerritories(newSelection);
+        if (onSelectTerritories) {
+          onSelectTerritories(newSelection);
+        }
+      }
     } catch (err) {
       console.error('Error deleting territory:', err);
+    }
+  };
+
+  const handleSelectTerritory = (territoryId: string, checked?: boolean) => {
+    const newSelected = checked !== undefined 
+      ? (checked ? [...selectedTerritories, territoryId] : selectedTerritories.filter(id => id !== territoryId)) 
+      : selectedTerritories.includes(territoryId) 
+        ? selectedTerritories.filter(id => id !== territoryId) 
+        : [...selectedTerritories, territoryId];
+      
+    setSelectedTerritories(newSelected);
+    
+    if (onSelectTerritories) {
+      onSelectTerritories(newSelected);
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (selectedTerritories.length === territories.length) {
+      setSelectedTerritories([]);
+      if (onSelectTerritories) {
+        onSelectTerritories([]);
+      }
+    } else {
+      const allIds = territories.map(t => t.id);
+      setSelectedTerritories(allIds);
+      if (onSelectTerritories) {
+        onSelectTerritories(allIds);
+      }
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedTerritories([]);
+    if (onSelectTerritories) {
+      onSelectTerritories([]);
     }
   };
 
@@ -102,36 +156,84 @@ export const TerritoryList: React.FC = () => {
 
   if (error) {
     return (
-      <Box p={3} display="flex" flexDirection="column" alignItems="center" gap={2}>
-        <Typography color="error" variant="h6" textAlign="center">
-          {error}
-        </Typography>
-        {error.includes('No tenant selected') && (
-          <Typography color="textSecondary" textAlign="center">
-            Please contact your administrator to be assigned to a tenant.
-          </Typography>
-        )}
+      <Box p={3}>
+        <Typography color="error">{error}</Typography>
+      </Box>
+    );
+  }
+
+  if (territories.length === 0) {
+    return (
+      <Box p={3}>
+        <Typography>No territories found.</Typography>
       </Box>
     );
   }
 
   return (
     <Box>
-      {/* List Header */}
-      <Stack direction="row" justifyContent="flex-end" spacing={1} sx={{ mb: 2 }}>
-        <IconButton size="small">
-          <SearchIcon />
-        </IconButton>
-        <IconButton size="small">
-          <FilterListIcon />
-        </IconButton>
-      </Stack>
+      {/* Selection Toolbar */}
+      {onSelectTerritories && (
+        <Toolbar
+          sx={{
+            pl: { sm: 2 },
+            pr: { xs: 1, sm: 1 },
+            ...(selectedTerritories.length > 0 && {
+              bgcolor: (theme) =>
+                alpha(theme.palette.primary.main, theme.palette.action.activatedOpacity),
+            }),
+            mb: 1,
+          }}
+        >
+          {selectedTerritories.length > 0 ? (
+            <Typography
+              sx={{ flex: '1 1 100%' }}
+              color="inherit"
+              variant="subtitle1"
+              component="div"
+            >
+              {selectedTerritories.length} {selectedTerritories.length === 1 ? 'territory' : 'territories'} selected
+            </Typography>
+          ) : (
+            <Typography
+              sx={{ flex: '1 1 100%' }}
+              variant="subtitle1"
+              component="div"
+            >
+              Select territories to export
+            </Typography>
+          )}
+          
+          <Tooltip title="Select All">
+            <IconButton onClick={handleSelectAll}>
+              <SelectAllIcon />
+            </IconButton>
+          </Tooltip>
+          
+          {selectedTerritories.length > 0 && (
+            <Tooltip title="Clear Selection">
+              <IconButton onClick={clearSelection}>
+                <ClearIcon />
+              </IconButton>
+          </Tooltip>
+          )}
+        </Toolbar>
+      )}
 
       {/* Territory Table */}
       <TableContainer>
         <Table>
           <TableHead>
             <TableRow>
+              {onSelectTerritories && (
+                <TableCell padding="checkbox">
+                  <Checkbox
+                    indeterminate={selectedTerritories.length > 0 && selectedTerritories.length < territories.length}
+                    checked={selectedTerritories.length > 0 && selectedTerritories.length === territories.length}
+                    onChange={handleSelectAll}
+                  />
+                </TableCell>
+              )}
               <TableCell>Name</TableCell>
               <TableCell>Type</TableCell>
               <TableCell>Assignments</TableCell>
@@ -141,7 +243,21 @@ export const TerritoryList: React.FC = () => {
           </TableHead>
           <TableBody>
             {territories.map((territory) => (
-              <TableRow key={territory.id} hover>
+              <TableRow 
+                key={territory.id} 
+                hover
+                selected={selectedTerritories.includes(territory.id)}
+                onClick={() => onSelectTerritories && handleSelectTerritory(territory.id)}
+                sx={{ cursor: onSelectTerritories ? 'pointer' : 'default' }}
+              >
+                {onSelectTerritories && (
+                  <TableCell padding="checkbox" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={selectedTerritories.includes(territory.id)}
+                      onChange={(e) => handleSelectTerritory(territory.id, e.target.checked)}
+                    />
+                  </TableCell>
+                )}
                 <TableCell>{territory.name}</TableCell>
                 <TableCell>
                   <Chip {...getTypeChipProps(territory.type)} />
@@ -166,7 +282,7 @@ export const TerritoryList: React.FC = () => {
                   <IconButton size="small" onClick={() => navigate(`/territories/${territory.id}/edit`)}>
                     <EditIcon fontSize="small" />
                   </IconButton>
-                  <IconButton size="small" onClick={() => handleDelete(territory.id)}>
+                  <IconButton size="small" onClick={(e) => handleDelete(territory.id, e)}>
                     <DeleteIcon fontSize="small" color="error" />
                   </IconButton>
                 </TableCell>
